@@ -104,7 +104,7 @@ export function createInteropResource(client: EthersClient): InteropResource {
     });
 
     // 2) Compute sender and select route
-    const sender = (p.sender ?? (await client.signerFor().getAddress())) as Address;
+    const sender = (p.sender ?? (await client.getL2Signer().getAddress())) as Address;
 
     const route = pickInteropRoute({
       actions: p.actions,
@@ -185,7 +185,7 @@ export function createInteropResource(client: EthersClient): InteropResource {
         // Build the SAME interop context we used to build that plan
         const ethCtx = await makeInteropContext(client, p.dst);
         // source signer MUST be bound to ethCtx.srcChainId
-        const signer = client.signerFor(ethCtx.srcChainId);
+        const signer = client.getL2Signer();
         const srcProvider = ethCtx.srcProvider;
 
         const from = await signer.getAddress();

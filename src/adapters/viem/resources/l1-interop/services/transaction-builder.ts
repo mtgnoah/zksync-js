@@ -63,7 +63,8 @@ export async function buildSendBundleTransaction(
     functionName: 'sendBundleToL1',
     args: [shadowAccountOps],
     chain: client.l2.chain,
-  } as WriteContractParameters;
+    account: undefined,
+  } as unknown as WriteContractParameters;
 }
 
 /**

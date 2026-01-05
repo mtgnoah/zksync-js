@@ -1,6 +1,7 @@
 // src/adapters/viem/resources/l1-interop/core/index.ts
 
 import type { WriteContractParameters } from 'viem';
+import { writeContract } from 'viem/actions';
 import type { ViemClient } from '../../../client';
 import type { Address, Hex } from '../../../../../core/types/primitives';
 import type {
@@ -77,7 +78,7 @@ export function createL1CoreResource(
   return {
     async quote(p: L1InteropParams): Promise<L1InteropQuote> {
       // 1. Get sender address
-      const sender = p.sender ?? await client.l2.getAddresses().then((addrs) => addrs[0]);
+      const sender = p.sender ?? client.account.address;
       if (!sender) {
         throw new Error('No sender address available');
       }
@@ -141,11 +142,12 @@ export function createL1CoreResource(
       const bundleTx = await buildSendBundleTransaction(client, p.operations);
 
       return {
-        kind: 'l1-direct',
-        quote,
+        route: 'l1-direct',
+        summary: quote,
         steps: [
           {
-            name: 'submit-bundle',
+            key: 'submit-bundle',
+            kind: 'l1-submit',
             description: `Submit ${p.operations.length} operation(s) to L1`,
             tx: bundleTx,
           },
@@ -164,12 +166,12 @@ export function createL1CoreResource(
       // 2. Execute withdrawal transaction to send ETH to ShadowAccount
       let l2WithdrawalTxHash: Hex = '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex;
 
-      if (withdrawals && plan.quote.totalCostEstimate > BigInt(0)) {
+      if (withdrawals && plan.summary.totalCostEstimate > BigInt(0)) {
         try {
           const withdrawalResult = await withdrawals.create({
             token: ETH_ADDRESS,
-            amount: plan.quote.totalCostEstimate,
-            to: plan.quote.shadowAccount,
+            amount: plan.summary.totalCostEstimate,
+            to: plan.summary.shadowAccount,
           });
 
           if (withdrawalResult.l2TxHash) {
@@ -182,13 +184,13 @@ export function createL1CoreResource(
       }
 
       // 3. Execute bundle submission transaction
-      const bundleTx = plan.steps.find((s) => s.name === 'submit-bundle')?.tx;
+      const bundleTx = plan.steps.find((s) => s.key === 'submit-bundle')?.tx;
       if (!bundleTx) {
         throw new Error('Bundle transaction not found in plan');
       }
 
       // Execute the bundle submission via client
-      const l2BundleTxHash = await client.l2.writeContract(bundleTx);
+      const l2BundleTxHash = await writeContract(client.l2, bundleTx);
 
       // 4. Store bundle data for recovery (if in browser environment)
       if (typeof localStorage !== 'undefined') {
@@ -216,7 +218,7 @@ export function createL1CoreResource(
           const response = await relayerClient.registerOperation({
             l2WithdrawalTxHash,
             l2BundleTxHash,
-            shadowAccount: plan.quote.shadowAccount,
+            shadowAccount: plan.summary.shadowAccount,
             operations: p.operations,
           });
 
@@ -234,13 +236,13 @@ export function createL1CoreResource(
       return {
         kind: 'l1-interop',
         plan,
-        txHashes: {
+        stepHashes: {
           withdrawal: l2WithdrawalTxHash,
           bundle: l2BundleTxHash,
         },
         l2WithdrawalTxHash,
         l2BundleTxHash,
-        shadowAccount: plan.quote.shadowAccount,
+        shadowAccount: plan.summary.shadowAccount,
         operations: p.operations,
         relayerTrackingId,
       };
@@ -261,9 +263,9 @@ export function createL1CoreResource(
         l2BundleTxHash = h;
         l2WithdrawalTxHash = '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex;
       } else {
-        l2WithdrawalTxHash = h.l2WithdrawalTxHash;
+        l2WithdrawalTxHash = h.l2WithdrawalTxHash ?? '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex;
         l2BundleTxHash = h.l2BundleTxHash;
-        relayerTrackingId = h.relayerTrackingId;
+        relayerTrackingId = 'relayerTrackingId' in h ? h.relayerTrackingId : undefined;
       }
 
       let phase: L1InteropPhase = 'L2_PENDING';

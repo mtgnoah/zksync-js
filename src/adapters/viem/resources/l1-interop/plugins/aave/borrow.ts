@@ -15,7 +15,7 @@ import type { AaveBorrowResource, Result } from './index';
 import { IPoolABI, IERC20ABI, IBridgehubABI } from '../../../../../../core/internal/abi-registry';
 import { getAaveAddresses } from '../../../../../../core/constants/aave-addresses';
 import { getShadowAccountAddress } from '../../shadow-account/utils';
-import { resolveAaveAssetAddress } from './assets';
+import { resolveAaveAsset } from './assets';
 import { DataEncoding } from '../../services/data-encoding';
 import { calculateBridgeBackGas } from '../../services/gas-estimation';
 import type { L1CoreResource } from '../../core';
@@ -48,7 +48,7 @@ export function createAaveBorrowResource(client: ViemClient, core: L1CoreResourc
 
     async create(p: AaveBorrowParams): Promise<L1InteropHandle<WriteContractParameters>> {
       // Get sender address
-      const sender = p.sender ?? await client.l2.getAddresses().then((addrs) => addrs[0]);
+      const sender = p.sender ?? client.account.address;
       if (!sender) {
         throw new Error('No sender address available');
       }
@@ -61,14 +61,14 @@ export function createAaveBorrowResource(client: ViemClient, core: L1CoreResourc
       const aaveAddresses = getAaveAddresses(Number(l1ChainId));
 
       // Resolve asset address (for now only GHO is supported)
-      const assetAddress = resolveAaveAssetAddress(p.asset);
+      const assetAddress = resolveAaveAsset(p.asset);
 
       // Build IPool.borrow calldata
       // IPool.borrow(asset, amount, interestRateMode, referralCode, onBehalfOf)
       const borrowData = encodeFunctionData({
         abi: IPoolABI,
         functionName: 'borrow',
-        args: [assetAddress, p.amount, p.interestRateMode, 0, shadowAccount],
+        args: [assetAddress, p.amount, BigInt(p.interestRateMode), 0, shadowAccount],
       });
 
       const operations: L1InteropOperation[] = [
@@ -125,7 +125,7 @@ export function createAaveBorrowResource(client: ViemClient, core: L1CoreResourc
           functionName: 'requestL2TransactionTwoBridges',
           args: [
             {
-              chainId: l2ChainId,
+              chainId: BigInt(l2ChainId),
               mintValue,
               l2Value: BigInt(0),
               l2GasLimit,

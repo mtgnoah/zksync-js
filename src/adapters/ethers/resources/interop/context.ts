@@ -26,16 +26,21 @@ export async function makeInteropContext(
   dstChain: bigint,
 ): Promise<InteropEthersContext> {
   const srcProvider = client.l2;
-  const dstProvider = client.requireProvider(dstChain);
-  const signer = client.signerFor();
+  // For now, use the same L2 provider for destination
+  // TODO: Support multiple L2 providers for cross-L2 interop
+  const dstProvider = client.l2;
+  const signer = client.getL2Signer();
 
   const [srcNet, dstNet] = await Promise.all([srcProvider.getNetwork(), dstProvider.getNetwork()]);
   const srcChainId = BigInt(srcNet.chainId.toString());
   const dstChainId = BigInt(dstNet.chainId.toString());
 
-  const { interopCenter, interopHandler, bridgehub, l2AssetRouter } =
-    await client.ensureAddresses();
-  const addresses: InteropAddresses = { interopCenter, interopHandler, bridgehub, l2AssetRouter };
+  const addresses = await client.ensureAddresses();
+  const { interopCenter, interopHandler, bridgehub, l2AssetRouter } = addresses;
+  if (!interopCenter || !interopHandler) {
+    throw new Error('Interop addresses not resolved');
+  }
+  const interopAddresses: InteropAddresses = { interopCenter, interopHandler, bridgehub, l2AssetRouter };
 
   const baseTokens: InteropBaseTokens = {
     src: await client.baseToken(srcChainId),

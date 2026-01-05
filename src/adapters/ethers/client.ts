@@ -8,6 +8,8 @@ import {
   L2_ASSET_ROUTER_ADDRESS,
   L2_NATIVE_TOKEN_VAULT_ADDRESS,
   L2_BASE_TOKEN_ADDRESS,
+  L2_INTEROP_CENTER_ADDRESS,
+  L2_INTEROP_HANDLER_ADDRESS,
 } from '../../core/constants';
 
 import {
@@ -24,7 +26,7 @@ import { OP_DEPOSITS } from '../../core/types';
 import { createErrorHandlers } from './errors/error-ops';
 
 // error handling
-const { wrapAs } = createErrorHandlers('client');
+const { wrapAs } = createErrorHandlers('helpers');
 
 export interface ResolvedAddresses {
   bridgehub: Address;
@@ -34,6 +36,8 @@ export interface ResolvedAddresses {
   l2AssetRouter: Address;
   l2NativeTokenVault: Address;
   l2BaseTokenSystem: Address;
+  interopCenter?: Address;
+  interopHandler?: Address;
 }
 
 export interface EthersClient {
@@ -184,6 +188,10 @@ export function createEthersClient(args: InitArgs): EthersClient {
     // L2BaseToken
     const l2BaseTokenSystem = args.overrides?.l2BaseTokenSystem ?? L2_BASE_TOKEN_ADDRESS;
 
+    // L2 Interop addresses
+    const interopCenter = args.overrides?.interopCenter ?? L2_INTEROP_CENTER_ADDRESS;
+    const interopHandler = args.overrides?.interopHandler ?? L2_INTEROP_HANDLER_ADDRESS;
+
     addrCache = {
       bridgehub,
       l1AssetRouter,
@@ -192,6 +200,8 @@ export function createEthersClient(args: InitArgs): EthersClient {
       l2AssetRouter,
       l2NativeTokenVault,
       l2BaseTokenSystem,
+      interopCenter,
+      interopHandler,
     };
     return addrCache;
   }

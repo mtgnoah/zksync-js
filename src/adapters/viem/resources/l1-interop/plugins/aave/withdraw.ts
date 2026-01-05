@@ -15,7 +15,7 @@ import type { L1CoreResource } from '../../core';
 import { IPoolABI } from '../../../../../../core/internal/abi-registry';
 import { getAaveAddresses } from '../../../../../../core/constants/aave-addresses';
 import { getShadowAccountAddress } from '../../shadow-account/utils';
-import { resolveAaveAssetAddress } from './assets';
+import { resolveAaveAsset } from './assets';
 
 export function createAaveWithdrawResource(client: ViemClient, core: L1CoreResource): AaveWithdrawResource {
   function toResult<T>(fn: () => Promise<T>): Promise<Result<T>> {
@@ -45,7 +45,7 @@ export function createAaveWithdrawResource(client: ViemClient, core: L1CoreResou
 
     async create(p: AaveWithdrawParams): Promise<L1InteropHandle<WriteContractParameters>> {
       // Get sender address
-      const sender = p.sender ?? await client.l2.getAddresses().then((addrs) => addrs[0]);
+      const sender = p.sender ?? client.account.address;
       if (!sender) {
         throw new Error('No sender address available');
       }
@@ -58,7 +58,7 @@ export function createAaveWithdrawResource(client: ViemClient, core: L1CoreResou
       const aaveAddresses = getAaveAddresses(Number(l1ChainId));
 
       // Resolve asset address
-      const assetAddress = resolveAaveAssetAddress(p.asset);
+      const assetAddress = resolveAaveAsset(p.asset);
 
       // Determine withdrawal recipient
       // Default: keep in ShadowAccount on L1

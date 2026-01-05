@@ -43,7 +43,7 @@ export interface Plan<Tx, Route, Quote> {
 
 /** Generic handle (returned by create()) */
 export interface Handle<TxHashMap extends Record<string, Hex>, Route, PlanT> {
-  kind: 'deposit' | 'withdrawal' | 'interop';
+  kind: 'deposit' | 'withdrawal' | 'interop' | 'l1-interop';
   route?: Route;
   stepHashes: TxHashMap; // step key -> tx hash
   plan: PlanT;

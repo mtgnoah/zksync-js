@@ -4,9 +4,8 @@ import type { EthersClient } from '../../client';
 import type { Address } from '../../../../core/types/primitives';
 import { pickWithdrawRoute } from '../../../../core/resources/withdrawals/route';
 import type { WithdrawParams, WithdrawRoute } from '../../../../core/types/flows/withdrawals';
-import type { CommonCtx } from '../../../../core/types/flows/base';
+import type { CommonCtx, Eip1559GasOverrides } from '../../../../core/types/flows/base';
 import { isEthBasedChain } from '../token-info';
-import type { TxOverrides } from '../../../../core/types/fees';
 
 // Common context for building withdrawal (L2 -> L1) transactions
 export interface BuildCtx extends CommonCtx {
@@ -24,7 +23,7 @@ export interface BuildCtx extends CommonCtx {
   baseIsEth: boolean;
 
   // L2 gas
-  gasOverrides?: TxOverrides;
+  gasOverrides?: Eip1559GasOverrides;
 }
 
 export async function commonCtx(

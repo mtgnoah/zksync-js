@@ -14,7 +14,7 @@ import type { AaveDepositResource, Result } from './index';
 import { IWrappedTokenGatewayV3ABI } from '../../../../../../core/internal/abi-registry';
 import { getAaveAddresses } from '../../../../../../core/constants/aave-addresses';
 import { getShadowAccountAddress } from '../../shadow-account/utils';
-import { resolveAaveAssetAddress } from './assets';
+import { resolveAaveAsset } from './assets';
 import type { L1CoreResource } from '../../core';
 
 export function createAaveDepositResource(client: ViemClient, core: L1CoreResource): AaveDepositResource {
@@ -50,7 +50,7 @@ export function createAaveDepositResource(client: ViemClient, core: L1CoreResour
 
     async create(p: AaveDepositParams): Promise<L1InteropHandle<WriteContractParameters>> {
       // Get sender address (use provided sender or get from client)
-      const sender = p.sender ?? await client.l2.getAddresses().then((addrs) => addrs[0]);
+      const sender = p.sender ?? client.account.address;
       if (!sender) {
         throw new Error('No sender address available');
       }
@@ -63,7 +63,7 @@ export function createAaveDepositResource(client: ViemClient, core: L1CoreResour
       const aaveAddresses = getAaveAddresses(Number(l1ChainId));
 
       // Resolve asset (for now only ETH is supported via WethGateway)
-      const assetAddress = resolveAaveAssetAddress(p.asset);
+      const assetAddress = resolveAaveAsset(p.asset);
 
       // Build the depositETH calldata
       // IWrappedTokenGatewayV3.depositETH(pool, onBehalfOf, referralCode)

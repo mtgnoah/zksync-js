@@ -76,6 +76,19 @@ async function parseBundleSentFromSource(args: {
     },
   );
 
+  if (!interopCenter) {
+    throw toZKsyncError(
+      'STATE',
+      {
+        resource: 'interop',
+        operation: OP_INTEROP.svc.status.ensureAddresses,
+        message: 'interopCenter address is not configured.',
+        context: {},
+      },
+      new Error('missing interopCenter address'),
+    );
+  }
+
   // Fetch the source tx receipt (on the source L2)
   const receipt = await wrap(
     OP_INTEROP.svc.status.sourceReceipt,
@@ -185,14 +198,8 @@ async function queryDstBundleLifecycle(args: {
   const { client, bundleHash, dstChainId } = args;
 
   // get a provider for the destination chain
-  const dstProvider = await wrap(
-    OP_INTEROP.svc.status.requireDstProvider,
-    () => client.requireProvider(dstChainId),
-    {
-      ctx: { where: 'requireProvider', dstChainId },
-      message: 'Failed to acquire destination provider.',
-    },
-  );
+  // TODO: Support multiple L2 providers for cross-L2 interop
+  const dstProvider = client.l2;
 
   // get destination handler address
   const { interopHandler } = await wrap(
@@ -403,14 +410,8 @@ export function createInteropFinalizationServices(
 
     async executeBundle(bundleHash, dstChainId) {
       // 1. get signer for destination chain
-      const signer = await wrap(
-        OP_INTEROP.exec.sendStep,
-        () => client.signerFor(dstChainId),
-        {
-          ctx: { dstChainId, bundleHash },
-          message: 'Failed to resolve destination signer.',
-        },
-      );
+      // Use L2 signer for destination
+      const signer = client.getL2Signer();
 
       // 2. get interopHandler address
       const { interopHandler } = await wrap(
@@ -421,6 +422,19 @@ export function createInteropFinalizationServices(
           message: 'Failed to ensure interop handler address.',
         },
       );
+
+      if (!interopHandler) {
+        throw toZKsyncError(
+          'STATE',
+          {
+            resource: 'interop',
+            operation: OP_INTEROP.svc.status.ensureAddresses,
+            message: 'interopHandler address is not configured.',
+            context: {},
+          },
+          new Error('missing interopHandler address'),
+        );
+      }
 
       // 3. send executeBundle(bundleHash)
       const handler = new Contract(interopHandler, IInteropHandlerAbi, signer) as Contract & {

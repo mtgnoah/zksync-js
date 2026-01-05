@@ -2,7 +2,7 @@
 
 import { BUFFER } from '../../constants';
 import type { GasEstimator, CoreTransactionRequest } from '../../adapters/interfaces';
-import type { TxOverrides } from '../../types/fees';
+import type { Eip1559GasOverrides } from '../../types/flows/base';
 
 export type GasQuote = {
   gasLimit: bigint;
@@ -58,7 +58,7 @@ async function fetchFees(estimator: GasEstimator): Promise<{
 export type QuoteWithdrawL2GasInput = {
   estimator: GasEstimator;
   tx: CoreTransactionRequest;
-  overrides?: TxOverrides;
+  overrides?: Eip1559GasOverrides;
 };
 
 // Quotes L2 gas for a withdrawal tx.
