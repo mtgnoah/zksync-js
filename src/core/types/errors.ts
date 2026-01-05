@@ -29,7 +29,8 @@ export type ErrorType =
   | 'RPC'
   | 'INTERNAL'
   | 'VERIFICATION'
-  | 'CONTRACT';
+  | 'CONTRACT'
+  | 'TIMEOUT';
 
 /** Resource surface */
 export type Resource =
@@ -38,7 +39,7 @@ export type Resource =
   | 'withdrawal-finalization'
   | 'helpers'
   | 'zksrpc'
-  | 'client';
+  | 'interop';
 
 /** Envelope we throw only for SDK-domain errors. */
 export interface ErrorEnvelope {
@@ -271,6 +272,70 @@ export const OP_WITHDRAWALS = {
     isFinalized: 'withdrawals.finalize.isWithdrawalFinalized',
     send: 'withdrawals.finalize.finalizeDeposit:send',
     wait: 'withdrawals.finalize.finalizeDeposit:wait',
-    estimate: 'withdrawals.finalize.estimateFinalizationFees',
+  },
+} as const;
+
+// Operation constants for Interop error contexts
+export const OP_INTEROP = {
+  // high-level flow ops (match resource methods)
+  quote: 'interop.quote',
+  tryQuote: 'interop.tryQuote',
+  prepare: 'interop.prepare',
+  tryPrepare: 'interop.tryPrepare',
+  create: 'interop.create',
+  tryCreate: 'interop.tryCreate',
+  status: 'interop.status',
+  wait: 'interop.wait',
+  tryWait: 'interop.tryWait',
+  finalize: 'interop.finalize',
+  tryFinalize: 'interop.tryFinalize',
+
+  // route-specific ops (keep names aligned with files)
+  routes: {
+    direct: {
+      preflight: 'interop.routes.direct:preflight',
+      build: 'interop.routes.direct:build',
+      encodeSendCall: 'interop.routes.direct:encodeSendCall',
+      encodeSendBundle: 'interop.routes.direct:encodeSendBundle',
+    },
+    indirect: {
+      preflight: 'interop.routes.indirect:preflight',
+      build: 'interop.routes.indirect:build',
+      approvals: 'interop.routes.indirect:approvals',
+      encodeApprove: 'interop.routes.indirect:encodeApprove',
+      encodeSendBundle: 'interop.routes.indirect:encodeSendBundle',
+    },
+  },
+
+  // attributes helpers (if you surface any encoding issues separately)
+  attrs: {
+    interopCallValue: 'interop.attrs:interopCallValue',
+    indirectCall: 'interop.attrs:indirectCall',
+    executionAddress: 'interop.attrs:executionAddress',
+    unbundlerAddress: 'interop.attrs:unbundlerAddress',
+  },
+
+  // execution path (nonce, gas, send, wait) – mirrors deposits’ style
+  exec: {
+    estimateGas: 'interop.exec:estimateGas',
+    sendStep: 'interop.exec:sendStep',
+    waitStep: 'interop.exec:waitStep',
+  },
+
+  // status service (logs & derivation)
+  svc: {
+    status: {
+      sourceReceipt: 'interop.svc.status:sourceReceipt',
+      ensureAddresses: 'interop.svc.status:ensureAddresses',
+      buildTopics: 'interop.svc.status:buildTopics',
+      parseSentLog: 'interop.svc.status:parseSentLog',
+      requireDstProvider: 'interop.svc.status:requireDstProvider',
+      dstLogs: 'interop.svc.status:dstLogs',
+      derive: 'interop.svc.status:derive',
+    },
+    wait: {
+      poll: 'interop.svc.wait:poll',
+      timeout: 'interop.svc.wait:timeout',
+    },
   },
 } as const;

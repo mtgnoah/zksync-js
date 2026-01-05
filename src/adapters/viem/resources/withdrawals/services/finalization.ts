@@ -6,10 +6,9 @@ import {
   type FinalizeReadiness,
   type FinalizeDepositParams,
   type WithdrawalKey,
-  type FinalizationEstimate,
 } from '../../../../../core/types/flows/withdrawals';
 
-import { IL1NullifierABI } from '../../../../../core/abi.ts';
+import { IL1NullifierABI } from '../../../../../core/internal/abi-registry.ts';
 import { L2_ASSET_ROUTER_ADDRESS, L1_MESSENGER_ADDRESS } from '../../../../../core/constants';
 import { findL1MessageSentLog } from '../../../../../core/resources/withdrawals/events';
 import { messengerLogIndex } from '../../../../../core/resources/withdrawals/logs';
@@ -56,18 +55,17 @@ export interface FinalizationServices {
   /**
    * Simulate finalizeDeposit on L1 Nullifier to check readiness.
    */
-  simulateFinalizeReadiness(params: FinalizeDepositParams): Promise<FinalizeReadiness>;
-
-  /**
-   * Estimate gas & fees for finalizeDeposit on L1 Nullifier.
-   */
-  estimateFinalization(params: FinalizeDepositParams): Promise<FinalizationEstimate>;
+  simulateFinalizeReadiness(
+    params: FinalizeDepositParams,
+    nullifier: Address,
+  ): Promise<FinalizeReadiness>;
 
   /**
    * Call finalizeDeposit on L1 Nullifier.
    */
   finalizeDeposit(
     params: FinalizeDepositParams,
+    nullifier: Address,
   ): Promise<{ hash: string; wait: () => Promise<TransactionReceipt> }>;
 }
 
@@ -109,7 +107,18 @@ export function createFinalizationServices(client: ViemClient): FinalizationServ
         'INTERNAL',
         OP_WITHDRAWALS.finalize.fetchParams.decodeMessage,
         () => {
-          const [decoded] = decodeAbiParameters([{ type: 'bytes' }], ev.data);
+          if (!ev.data) {
+            throw createError('STATE', {
+              resource: 'withdrawals',
+              operation: OP_WITHDRAWALS.finalize.fetchParams.decodeMessage,
+              message: 'L1MessageSent event data is missing.',
+              context: { l2TxHash, event: ev },
+            });
+          }
+
+          const dataHex = ev.data;
+
+          const [decoded] = decodeAbiParameters([{ type: 'bytes' }] as const, dataHex);
           return decoded;
         },
         {
@@ -193,21 +202,20 @@ export function createFinalizationServices(client: ViemClient): FinalizationServ
       return { params, nullifier: l1Nullifier };
     },
 
-    async simulateFinalizeReadiness(params) {
-      const { l1Nullifier } = await wrapAs(
-        'INTERNAL',
-        OP_WITHDRAWALS.finalize.readiness.ensureAddresses,
-        () => client.ensureAddresses(),
-        {
-          ctx: { where: 'ensureAddresses' },
-          message: 'Failed to ensure L1 Nullifier address.',
-        },
-      );
-
-      // First, check if the withdrawal is already finalized
+    async simulateFinalizeReadiness(params, nullifier) {
       const done = await (async () => {
         try {
-          const result = await wrapAs(
+          const { l1Nullifier } = await wrapAs(
+            'INTERNAL',
+            OP_WITHDRAWALS.finalize.readiness.ensureAddresses,
+            () => client.ensureAddresses(),
+            {
+              ctx: { where: 'ensureAddresses' },
+              message: 'Failed to ensure L1 Nullifier address.',
+            },
+          );
+
+          return await wrapAs(
             'RPC',
             OP_WITHDRAWALS.finalize.readiness.isFinalized,
             () =>
@@ -222,20 +230,17 @@ export function createFinalizationServices(client: ViemClient): FinalizationServ
               message: 'Failed to read finalization status.',
             },
           );
-
-          return result;
         } catch {
-          // If this read fails, treat as "not finalized" and fall through
           return false;
         }
       })();
 
       if (done) return { kind: 'FINALIZED' };
 
-      // Try simulating finalizeDeposit on the same L1 Nullifier
+      // Try simulating finalizeDeposit
       try {
         await client.l1.simulateContract({
-          address: l1Nullifier,
+          address: nullifier,
           abi: IL1NullifierABI as Abi,
           functionName: 'finalizeDeposit',
           args: [params],
@@ -275,101 +280,10 @@ export function createFinalizationServices(client: ViemClient): FinalizationServ
       );
     },
 
-    async estimateFinalization(params: FinalizeDepositParams): Promise<FinalizationEstimate> {
-      const { l1Nullifier } = await wrapAs(
-        'INTERNAL',
-        OP_WITHDRAWALS.finalize.estimate,
-        () => client.ensureAddresses(),
-        {
-          ctx: { where: 'ensureAddresses' },
-          message: 'Failed to ensure L1 Nullifier address.',
-        },
-      );
-      // Estimate gas for finalizeDeposit on the L1 Nullifier
-      const gasLimit = await wrapAs(
-        'RPC',
-        OP_WITHDRAWALS.finalize.estimate,
-        () =>
-          client.l1.estimateContractGas({
-            address: l1Nullifier,
-            abi: IL1NullifierABI as Abi,
-            functionName: 'finalizeDeposit',
-            args: [params],
-            account: client.account,
-          }),
-        {
-          ctx: {
-            where: 'estimateContractGas(finalizeDeposit)',
-            chainIdL2: params.chainId,
-            l2BatchNumber: params.l2BatchNumber,
-            l2MessageIndex: params.l2MessageIndex,
-            l1Nullifier,
-          },
-          message: 'Failed to estimate gas for finalizeDeposit.',
-        },
-      );
-
-      // Estimate per-gas fees (with EIP-1559 + legacy fallback)
-      let maxFeePerGas: bigint;
-      let maxPriorityFeePerGas: bigint;
-
-      try {
-        const fee = await wrapAs(
-          'RPC',
-          OP_WITHDRAWALS.finalize.estimate,
-          () => client.l1.estimateFeesPerGas(),
-          {
-            ctx: { where: 'estimateFeesPerGas' },
-            message: 'Failed to estimate EIP-1559 fees.',
-          },
-        );
-
-        maxFeePerGas =
-          fee.maxFeePerGas ??
-          (() => {
-            throw createError('RPC', {
-              resource: 'withdrawals',
-              operation: OP_WITHDRAWALS.finalize.estimate,
-              message: 'Provider did not return maxFeePerGas.',
-              context: { fee },
-            });
-          })();
-        maxPriorityFeePerGas = fee.maxPriorityFeePerGas ?? 0n;
-      } catch {
-        const gasPrice = await wrapAs(
-          'RPC',
-          OP_WITHDRAWALS.finalize.estimate,
-          () => client.l1.getGasPrice(),
-          {
-            ctx: { where: 'getGasPrice' },
-            message: 'Failed to read gas price for finalizeDeposit.',
-          },
-        );
-
-        maxFeePerGas = gasPrice;
-        maxPriorityFeePerGas = 0n;
-      }
-
-      return {
-        gasLimit,
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-      };
-    },
-
-    async finalizeDeposit(params: FinalizeDepositParams) {
-      const { l1Nullifier } = await wrapAs(
-        'INTERNAL',
-        OP_WITHDRAWALS.finalize.fetchParams.ensureAddresses,
-        () => client.ensureAddresses(),
-        {
-          ctx: { where: 'ensureAddresses' },
-          message: 'Failed to ensure L1 Nullifier address.',
-        },
-      );
+    async finalizeDeposit(params: FinalizeDepositParams, nullifier: Address) {
       try {
         const hash = await client.l1Wallet.writeContract({
-          address: l1Nullifier,
+          address: nullifier,
           abi: IL1NullifierABI as Abi,
           functionName: 'finalizeDeposit',
           args: [params],
@@ -406,7 +320,7 @@ export function createFinalizationServices(client: ViemClient): FinalizationServ
               chainIdL2: params.chainId,
               l2BatchNumber: params.l2BatchNumber,
               l2MessageIndex: params.l2MessageIndex,
-              l1Nullifier,
+              nullifier,
             },
           },
           e,

@@ -1,0 +1,98 @@
+// src/adapters/viem/resources/l1-interop/plugins/aave/repay.ts
+
+import { encodeFunctionData, type WriteContractParameters } from 'viem';
+import type { ViemClient } from '../../../../client';
+import type {
+  L1InteropQuote,
+  L1InteropHandle,
+  L1InteropPlan,
+  L1InteropParams,
+  L1InteropOperation,
+} from '../../../../../../core/types/flows/l1-interop';
+import type { AaveRepayParams } from '../../../../../../core/types/flows/aave';
+import type { AaveRepayResource, Result } from './index';
+import type { L1CoreResource } from '../../core';
+import { IPoolABI } from '../../../../../../core/internal/abi-registry';
+import { getAaveAddresses } from '../../../../../../core/constants/aave-addresses';
+import { getShadowAccountAddress } from '../../shadow-account/utils';
+import { resolveAaveAssetAddress } from './assets';
+
+export function createAaveRepayResource(client: ViemClient, core: L1CoreResource): AaveRepayResource {
+  function toResult<T>(fn: () => Promise<T>): Promise<Result<T>> {
+    return fn()
+      .then((value) => ({ ok: true as const, value }))
+      .catch((error) => ({ ok: false as const, error }));
+  }
+
+  return {
+    async quote(p: AaveRepayParams): Promise<L1InteropQuote> {
+      // TODO: Implement repay quote logic
+      throw new Error('Not implemented: Aave repay quote');
+    },
+
+    tryQuote(p: AaveRepayParams): Promise<Result<L1InteropQuote>> {
+      return toResult(() => this.quote(p));
+    },
+
+    async prepare(p: AaveRepayParams): Promise<L1InteropPlan<WriteContractParameters>> {
+      // TODO: Implement repay prepare logic
+      throw new Error('Not implemented: Aave repay prepare');
+    },
+
+    tryPrepare(p: AaveRepayParams): Promise<Result<L1InteropPlan<WriteContractParameters>>> {
+      return toResult(() => this.prepare(p));
+    },
+
+    async create(p: AaveRepayParams): Promise<L1InteropHandle<WriteContractParameters>> {
+      // Get sender address
+      const sender = p.sender ?? await client.l2.getAddresses().then((addrs) => addrs[0]);
+      if (!sender) {
+        throw new Error('No sender address available');
+      }
+
+      // Get shadow account address
+      const shadowAccount = await getShadowAccountAddress(client, sender);
+
+      // Get Aave addresses for the L1 network
+      const l1ChainId = await client.l1.getChainId();
+      const aaveAddresses = getAaveAddresses(Number(l1ChainId));
+
+      // Resolve asset address
+      const assetAddress = resolveAaveAssetAddress(p.asset);
+
+      // Determine on behalf of whom to repay
+      const onBehalfOf = p.onBehalfOf ?? shadowAccount;
+
+      // Build IPool.repay calldata
+      // IPool.repay(asset, amount, rateMode, onBehalfOf)
+      const repayData = encodeFunctionData({
+        abi: IPoolABI,
+        functionName: 'repay',
+        args: [assetAddress, p.amount, p.interestRateMode, onBehalfOf],
+      });
+
+      const operations: L1InteropOperation[] = [
+        {
+          type: 'call',
+          target: aaveAddresses.pool,
+          value: BigInt(0),
+          data: repayData,
+        },
+      ];
+
+      // Build L1InteropParams
+      const l1InteropParams: L1InteropParams = {
+        sender,
+        operations,
+        relayer: p.relayer,
+      };
+
+      // Use the core L1Interop resource to execute the operation
+      return await core.create(l1InteropParams);
+    },
+
+    tryCreate(p: AaveRepayParams): Promise<Result<L1InteropHandle<WriteContractParameters>>> {
+      return toResult(() => this.create(p));
+    },
+  };
+}

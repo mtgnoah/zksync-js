@@ -8,10 +8,9 @@ import {
   type FinalizeReadiness,
   type FinalizeDepositParams,
   type WithdrawalKey,
-  type FinalizationEstimate,
 } from '../../../../../core/types/flows/withdrawals';
 
-import { IL1NullifierABI } from '../../../../../core/abi.ts';
+import { IL1NullifierABI } from '../../../../../core/internal/abi-registry.ts';
 
 import { L2_ASSET_ROUTER_ADDRESS, L1_MESSENGER_ADDRESS } from '../../../../../core/constants';
 import { findL1MessageSentLog } from '../../../../../core/resources/withdrawals/events';
@@ -46,18 +45,17 @@ export interface FinalizationServices {
   /**
    * Simulate finalizeDeposit on L1 Nullifier to check readiness.
    */
-  simulateFinalizeReadiness(params: FinalizeDepositParams): Promise<FinalizeReadiness>;
-
-  /**
-   * Estimate gas & fees for finalizeDeposit on L1 Nullifier.
-   */
-  estimateFinalization(params: FinalizeDepositParams): Promise<FinalizationEstimate>;
+  simulateFinalizeReadiness(
+    params: FinalizeDepositParams,
+    nullifier: Address,
+  ): Promise<FinalizeReadiness>;
 
   /**
    * Call finalizeDeposit on L1 Nullifier.
    */
   finalizeDeposit(
     params: FinalizeDepositParams,
+    nullifier: Address,
   ): Promise<{ hash: string; wait: () => Promise<TransactionReceipt> }>;
 }
 
@@ -100,7 +98,21 @@ export function createFinalizationServices(client: EthersClient): FinalizationSe
       const message = await wrapAs(
         'INTERNAL',
         OP_WITHDRAWALS.finalize.fetchParams.decodeMessage,
-        () => Promise.resolve(AbiCoder.defaultAbiCoder().decode(['bytes'], ev.data)[0] as Hex),
+        () => {
+          if (!ev.data) {
+            throw createError('STATE', {
+              resource: 'withdrawals',
+              operation: OP_WITHDRAWALS.finalize.fetchParams.decodeMessage,
+              message: 'L1MessageSent event data is missing.',
+              context: { l2TxHash, event: ev },
+            });
+          }
+
+          const dataHex = ev.data;
+
+          const decoded = AbiCoder.defaultAbiCoder().decode(['bytes'], dataHex)[0] as Hex;
+          return decoded;
+        },
         {
           ctx: { where: 'decode L1MessageSent', data: ev.data },
           message: 'Failed to decode withdrawal message.',
@@ -184,47 +196,37 @@ export function createFinalizationServices(client: EthersClient): FinalizationSe
       return { params, nullifier: l1Nullifier };
     },
 
-    async simulateFinalizeReadiness(params: FinalizeDepositParams): Promise<FinalizeReadiness> {
-      const { l1Nullifier } = await wrapAs(
-        'INTERNAL',
-        OP_WITHDRAWALS.finalize.readiness.ensureAddresses,
-        () => client.ensureAddresses(),
-        {
-          ctx: { where: 'ensureAddresses' },
-          message: 'Failed to ensure L1 Nullifier address.',
-        },
-      );
-
-      // check if the withdrawal is already finalized
-      const done = await (async (): Promise<boolean> => {
+    async simulateFinalizeReadiness(params, nullifier) {
+      const done: boolean = (await (async () => {
         try {
-          const cMini = new Contract(l1Nullifier, IL1NullifierMini, l1);
-          const isFinalized = await wrapAs(
+          const { l1Nullifier } = await wrapAs(
+            'INTERNAL',
+            OP_WITHDRAWALS.finalize.readiness.ensureAddresses,
+            () => client.ensureAddresses(),
+            {
+              ctx: { where: 'ensureAddresses' },
+              message: 'Failed to ensure L1 Nullifier address.',
+            },
+          );
+          const c = new Contract(l1Nullifier, IL1NullifierMini, l1);
+          return (await wrapAs(
             'RPC',
             OP_WITHDRAWALS.finalize.readiness.isFinalized,
-            (): Promise<boolean> =>
-              cMini.isWithdrawalFinalized(
-                params.chainId,
-                params.l2BatchNumber,
-                params.l2MessageIndex,
-              ),
+            () =>
+              c.isWithdrawalFinalized(params.chainId, params.l2BatchNumber, params.l2MessageIndex),
             {
               ctx: { where: 'isWithdrawalFinalized', params },
               message: 'Failed to read finalization status.',
             },
-          );
-
-          return Boolean(isFinalized);
+          )) as unknown; // TODO: fix typing
         } catch {
-          // If this read fails for any reason, treat as "not finalized" and fall through
           return false;
         }
-      })();
-
+      })()) as boolean;
       if (done) return { kind: 'FINALIZED' };
 
       // Try simulating finalizeDeposit
-      const c = new Contract(l1Nullifier, IL1NullifierABI, l1);
+      const c = new Contract(nullifier, IL1NullifierABI, l1);
       try {
         await c.finalizeDeposit.staticCall(params);
         return { kind: 'READY' };
@@ -256,75 +258,8 @@ export function createFinalizationServices(client: EthersClient): FinalizationSe
       );
     },
 
-    async estimateFinalization(params: FinalizeDepositParams): Promise<FinalizationEstimate> {
-      const { l1Nullifier } = await wrapAs(
-        'INTERNAL',
-        OP_WITHDRAWALS.finalize.estimate,
-        () => client.ensureAddresses(),
-        {
-          ctx: { where: 'ensureAddresses' },
-          message: 'Failed to ensure L1 Nullifier address.',
-        },
-      );
-
-      const signer = client.getL1Signer();
-      const c = new Contract(l1Nullifier, IL1NullifierABI, signer);
-
-      // Estimate gas for finalizeDeposit on the L1 Nullifier
-      const gasLimit = await wrapAs(
-        'RPC',
-        OP_WITHDRAWALS.finalize.estimate,
-        () => c.finalizeDeposit.estimateGas(params),
-        {
-          ctx: {
-            where: 'estimateGas(finalizeDeposit)',
-            chainIdL2: params.chainId,
-            l2BatchNumber: params.l2BatchNumber,
-            l2MessageIndex: params.l2MessageIndex,
-            l1Nullifier,
-          },
-          message: 'Failed to estimate gas for finalizeDeposit.',
-        },
-      );
-
-      // Estimate per-gas fees (EIP-1559 if available, fallback to legacy gasPrice)
-      const feeData = await wrapAs('RPC', OP_WITHDRAWALS.finalize.estimate, () => l1.getFeeData(), {
-        ctx: { where: 'l1.getFeeData' },
-        message: 'Failed to estimate fee data for finalizeDeposit.',
-      });
-
-      const maxFeePerGas =
-        feeData.maxFeePerGas ??
-        feeData.gasPrice ?? // legacy-style gas price if present
-        (() => {
-          throw createError('RPC', {
-            resource: 'withdrawals',
-            operation: OP_WITHDRAWALS.finalize.estimate,
-            message: 'Provider did not return gas price or EIP-1559 fields.',
-            context: { feeData },
-          });
-        })();
-
-      const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ?? 0n;
-
-      return {
-        gasLimit,
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-      };
-    },
-
-    async finalizeDeposit(params: FinalizeDepositParams) {
-      const { l1Nullifier } = await wrapAs(
-        'INTERNAL',
-        OP_WITHDRAWALS.finalize.fetchParams.ensureAddresses,
-        () => client.ensureAddresses(),
-        {
-          ctx: { where: 'ensureAddresses' },
-          message: 'Failed to ensure L1 Nullifier address.',
-        },
-      );
-      const c = new Contract(l1Nullifier, IL1NullifierABI, signer);
+    async finalizeDeposit(params: FinalizeDepositParams, nullifier: Address) {
+      const c = new Contract(nullifier, IL1NullifierABI, signer);
       try {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const receipt = await c.finalizeDeposit(params);
@@ -339,6 +274,7 @@ export function createFinalizationServices(client: EthersClient): FinalizationSe
               // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
               return await receipt.wait();
             } catch (e) {
+              // Map wait() failures to EXECUTION with useful context
               throw toZKsyncError(
                 'EXECUTION',
                 {
@@ -364,7 +300,7 @@ export function createFinalizationServices(client: EthersClient): FinalizationSe
               chainIdL2: params.chainId,
               l2BatchNumber: params.l2BatchNumber,
               l2MessageIndex: params.l2MessageIndex,
-              l1Nullifier,
+              nullifier,
             },
           },
           e,

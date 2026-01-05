@@ -1,5 +1,4 @@
-// src/core/abi-registry.ts
-
+// src/core/abi.ts
 export { default as IBridgehubABI } from './internal/abis/IBridgehub';
 export { default as IL1AssetRouterABI } from './internal/abis/IL1AssetRouter';
 export { default as IL1NullifierABI } from './internal/abis/IL1Nullifier';
@@ -9,3 +8,12 @@ export { default as L2NativeTokenVaultABI } from './internal/abis/L2NativeTokenV
 export { default as IBaseTokenABI } from './internal/abis/IBaseToken';
 export { default as IERC20ABI } from './internal/abis/IERC20';
 export { default as MailboxABI } from './internal/abis/Mailbox';
+export { default as IERC7786AttributesABI } from './internal/abis/IERC7786Attributes';
+export { default as InteropCenterABI } from './internal/abis/InteropCenter';
+export { default as IInteropHandlerABI } from './internal/abis/IInteropHandler';
+export { default as L2MessageVerificationABI } from './internal/abis/L2MessageVerification';
+export { default as L2InteropCenterABI } from './internal/abis/L2InteropCenter';
+export { default as L1InteropHandlerABI } from './internal/abis/L1InteropHandler';
+export { default as L1ShadowAccountABI } from './internal/abis/L1ShadowAccount';
+export { default as IPoolABI } from './internal/abis/IPool';
+export { default as IWrappedTokenGatewayV3ABI } from './internal/abis/IWrappedTokenGatewayV3';

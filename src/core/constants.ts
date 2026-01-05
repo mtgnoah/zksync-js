@@ -13,6 +13,16 @@ export const k256hex = (s: string): Hex =>
 // Addresses (system / core)
 // -----------------------------------------------------------------------------
 
+/** The address of the L2 InteropCenter contract.
+ * @readonly
+ */
+export const L2_INTEROP_CENTER_ADDRESS: Address = '0x000000000000000000000000000000000001000b';
+
+/** The address of the L2 InteropHandler contract.
+ * @readonly
+ */
+export const L2_INTEROP_HANDLER_ADDRESS: Address = '0x000000000000000000000000000000000001000c';
+
 /** The formal zero address used to represent ETH on L1. */
 export const FORMAL_ETH_ADDRESS: Address = '0x0000000000000000000000000000000000000000';
 

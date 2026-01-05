@@ -12,6 +12,11 @@ import {
   type WithdrawalsResource as WithdrawalsResourceType,
 } from './resources/withdrawals/index';
 
+import {
+  createL1InteropResource,
+  type L1InteropResource as L1InteropResourceType,
+} from './resources/l1-interop/index';
+
 import type { Address, Hex } from '../../core/types';
 import { isAddressEq } from '../../core/utils/addr';
 import { L2_BASE_TOKEN_ADDRESS, ETH_ADDRESS, FORMAL_ETH_ADDRESS } from '../../core/constants';
@@ -25,7 +30,7 @@ import type {
   L2NativeTokenVaultABI,
   L1NativeTokenVaultABI,
   IBaseTokenABI,
-} from '../../core/abi';
+} from '../../core/internal/abi-registry';
 
 // Helpers to express the contracts() return type
 type ViemContracts = {
@@ -42,6 +47,7 @@ type ViemContracts = {
 export interface ViemSdk {
   deposits: DepositsResourceType;
   withdrawals: WithdrawalsResourceType;
+  l1Interop: L1InteropResourceType;
   helpers: {
     // addresses & contracts
     addresses(): Promise<ResolvedAddresses>;
@@ -60,9 +66,14 @@ export interface ViemSdk {
 }
 
 export function createViemSdk(client: ViemClient): ViemSdk {
+  const deposits = createDepositsResource(client);
+  const withdrawals = createWithdrawalsResource(client);
+  const l1Interop = createL1InteropResource(client, withdrawals);
+
   return {
-    deposits: createDepositsResource(client),
-    withdrawals: createWithdrawalsResource(client),
+    deposits,
+    withdrawals,
+    l1Interop,
 
     helpers: {
       addresses: () => client.ensureAddresses(),

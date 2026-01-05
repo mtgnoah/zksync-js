@@ -2,6 +2,20 @@
 
 import type { Address, Hex } from '../primitives';
 
+// Common EIP-1559-style override structure for transactions
+export interface Eip1559GasOverrides {
+  gasLimit?: bigint;
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+}
+
+// Resolved fee data returned by quote/plan steps
+export interface ResolvedEip1559Fees {
+  gasLimit?: bigint;
+  maxFeePerGas: bigint;
+  maxPriorityFeePerGas: bigint;
+}
+
 /** Generic approval requirement */
 export interface ApprovalNeed {
   token: Address;
@@ -29,7 +43,7 @@ export interface Plan<Tx, Route, Quote> {
 
 /** Generic handle (returned by create()) */
 export interface Handle<TxHashMap extends Record<string, Hex>, Route, PlanT> {
-  kind: 'deposit' | 'withdrawal';
+  kind: 'deposit' | 'withdrawal' | 'interop';
   route?: Route;
   stepHashes: TxHashMap; // step key -> tx hash
   plan: PlanT;
@@ -47,4 +61,16 @@ export interface CommonCtx {
   sender: Address;
   chainIdL2: bigint;
   bridgehub: Address;
+}
+
+// Parsed L1 receipt and logs
+export interface ParsedLog {
+  address?: string;
+  topics?: readonly Hex[];
+  data?: Hex;
+}
+
+export interface ParsedReceipt {
+  transactionHash: Hex;
+  logs: readonly ParsedLog[];
 }

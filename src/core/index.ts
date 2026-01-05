@@ -7,6 +7,10 @@ export {
   L2_ASSET_ROUTER_ADDRESS,
   L2_NATIVE_TOKEN_VAULT_ADDRESS,
   L1_SOPH_TOKEN_ADDRESS,
+  L2_INTEROP_CENTER_ADDRESS,
+  L2_INTEROP_HANDLER_ADDRESS,
+  L1_FEE_ESTIMATION_COEF_NUMERATOR,
+  L1_FEE_ESTIMATION_COEF_DENOMINATOR,
 } from './constants';
 
 export * as abi from './abi';
@@ -26,11 +30,21 @@ export * from './resources/withdrawals/route';
 export * from './resources/withdrawals/events';
 export * from './resources/withdrawals/logs';
 
+// L2 Interop resources
+export * from './resources/interop/actions';
+export * from './resources/interop/events';
+export * from './resources/interop/logs';
+export * from './resources/interop/route';
+export * from './resources/interop/address';
+
 // Core types (type-only)
 export type * from './types';
 export type * from './types/errors';
 export type * from './types/flows/base';
 export type * from './types/flows/deposits';
 export type * from './types/flows/withdrawals';
+export type * from './types/flows/interop';
+export type * from './types/flows/l1-interop';
+export type * from './types/flows/aave';
 export type * from './types/flows/route';
 export type * from './types/primitives';

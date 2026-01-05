@@ -1,29 +1,26 @@
 // src/types/flows/withdrawals.ts
 
-import type { WithdrawalFeeBreakdown, TxOverrides } from '../fees';
 import type { Address, Hex } from '../primitives';
-import type { ApprovalNeed, Plan, Handle } from './base';
+import type { ApprovalNeed, Plan, Handle, Eip1559GasOverrides, ResolvedEip1559Fees } from './base';
 
 /** Input */
 export interface WithdrawParams {
   token: Address;
   amount: bigint;
   to?: Address;
-  refundRecipient?: Address;
-  l2TxOverrides?: TxOverrides;
+  l2GasLimit?: bigint;
+  l2TxOverrides?: Eip1559GasOverrides;
 }
 
 /** Routes */
-export type WithdrawRoute = 'base' | 'erc20-nonbase';
+export type WithdrawRoute = 'eth-base' | 'erc20-nonbase' | 'eth-nonbase';
 
 /** Quote */
 export interface WithdrawQuote {
   route: WithdrawRoute;
   approvalsNeeded: readonly ApprovalNeed[];
-  amounts: {
-    transfer: { token: Address; amount: bigint };
-  };
-  fees: WithdrawalFeeBreakdown;
+  suggestedL2GasLimit: bigint;
+  fees: ResolvedEip1559Fees;
 }
 
 /** Plan (Tx generic) */
@@ -94,22 +91,3 @@ export type FinalizeReadiness =
       reason: 'message-invalid' | 'invalid-chain' | 'settlement-layer' | 'unsupported';
       detail?: string;
     };
-
-// Finalization gas & fee estimate
-export interface FinalizationEstimate {
-  gasLimit: bigint;
-  maxFeePerGas: bigint;
-  maxPriorityFeePerGas: bigint;
-}
-
-// Parsed L1 receipt and logs
-export type ParsedLog = {
-  address: string;
-  topics: Hex[];
-  data: Hex;
-};
-
-// Parsed L1 receipt
-export type ParsedReceipt = {
-  logs: ParsedLog[];
-};
