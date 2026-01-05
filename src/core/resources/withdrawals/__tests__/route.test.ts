@@ -5,13 +5,13 @@ import { ETH_ADDRESS, L2_BASE_TOKEN_ADDRESS } from '../../../constants';
 
 describe('withdrawals/pickWithdrawRoute', () => {
   it('routes the ETH sentinel through the base path', () => {
-    expect(pickWithdrawRoute({ token: ETH_ADDRESS, baseIsEth: true })).toBe('base');
-    expect(pickWithdrawRoute({ token: ETH_ADDRESS, baseIsEth: false })).toBe('base');
+    expect(pickWithdrawRoute({ token: ETH_ADDRESS, baseIsEth: true })).toBe('eth-base');
+    expect(pickWithdrawRoute({ token: ETH_ADDRESS, baseIsEth: false })).toBe('eth-base');
   });
 
-  it('returns base for the L2 base-token alias (0x…800A)', () => {
-    expect(pickWithdrawRoute({ token: L2_BASE_TOKEN_ADDRESS, baseIsEth: true })).toBe('base');
-    expect(pickWithdrawRoute({ token: L2_BASE_TOKEN_ADDRESS, baseIsEth: false })).toBe('base');
+  it('returns eth-base for the L2 base-token alias (0x…800A)', () => {
+    expect(pickWithdrawRoute({ token: L2_BASE_TOKEN_ADDRESS, baseIsEth: true })).toBe('eth-base');
+    expect(pickWithdrawRoute({ token: L2_BASE_TOKEN_ADDRESS, baseIsEth: false })).toBe('eth-base');
 
     // case-insensitive
     expect(
@@ -19,7 +19,7 @@ describe('withdrawals/pickWithdrawRoute', () => {
         token: L2_BASE_TOKEN_ADDRESS.toLowerCase() as `0x${string}`,
         baseIsEth: false,
       }),
-    ).toBe('base');
+    ).toBe('eth-base');
   });
 
   it('returns erc20-nonbase for any non-ETH token', () => {
