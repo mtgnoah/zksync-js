@@ -1,6 +1,6 @@
 // src/adapters/ethers/resources/interop/context.ts
 import { Interface } from 'ethers';
-import type { InteropAddresses, InteropBaseTokens, InteropEthersContext } from './types';
+import type { InteropBaseTokens, InteropEthersContext } from './types';
 import type { Hex } from '../../../../core/types/primitives';
 import type { InteropTopics } from '../../../../core/resources/interop/events';
 import type { EthersClient } from '../../client';
@@ -35,11 +35,10 @@ export async function makeInteropContext(
   const dstChainId = BigInt(dstNet.chainId.toString());
 
   const addresses = await client.ensureAddresses();
-  const { interopCenter, interopHandler, bridgehub, l2AssetRouter } = addresses;
+  const { interopCenter, interopHandler } = addresses;
   if (!interopCenter || !interopHandler) {
     throw new Error('Interop addresses not resolved');
   }
-  const interopAddresses: InteropAddresses = { interopCenter, interopHandler, bridgehub, l2AssetRouter };
 
   const baseTokens: InteropBaseTokens = {
     src: await client.baseToken(srcChainId),

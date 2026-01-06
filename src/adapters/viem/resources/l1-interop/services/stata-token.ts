@@ -1,7 +1,7 @@
 // src/adapters/viem/resources/l1-interop/services/stata-token.ts
 
 import type { ViemClient } from '../../../client';
-import type { Address, Hex } from '../../../../../core/types/primitives';
+import type { Address } from '../../../../../core/types/primitives';
 import type { L1InteropOperation } from '../../../../../core/types/flows/l1-interop';
 import { encodeFunctionData } from 'viem';
 import { IERC20ABI } from '../../../../../core/internal/abi-registry';
@@ -65,7 +65,8 @@ const STATA_TOKEN_FACTORY_ADDRESS: Address = '0x00000000000000000000000000000000
  * Rebasing aTokens continuously accrue interest, making their balance change over time
  * This makes them incompatible with standard bridges
  */
-export async function isRebasingToken(client: ViemClient, token: Address): Promise<boolean> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function isRebasingToken(client: ViemClient, token: Address): boolean {
   // Simplified check: assume all aTokens are rebasing except StataTokens
   // In a real implementation, query Aave ProtocolDataProvider
   // to check if the token is an aToken
@@ -100,8 +101,8 @@ export async function getStataTokenAddress(
     });
 
     const zeroAddress = '0x0000000000000000000000000000000000000000' as Address;
-    return stataToken === zeroAddress ? null : (stataToken as Address);
-  } catch (error) {
+    return stataToken === zeroAddress ? null : stataToken;
+  } catch {
     return null;
   }
 }
@@ -117,7 +118,7 @@ export async function buildWrapOperations(
   receiver: Address
 ): Promise<L1InteropOperation[]> {
   // Get StataToken address (or create if doesn't exist)
-  let stataToken = await getStataTokenAddress(client, aToken);
+  const stataToken = await getStataTokenAddress(client, aToken);
 
   if (!stataToken) {
     // In real implementation, would need to create StataToken first
@@ -162,13 +163,13 @@ export async function buildWrapOperations(
  * Build operations to unwrap StataTokens back to aTokens
  * Returns array of operations: redeem
  */
-export async function buildUnwrapOperations(
-  client: ViemClient,
+export function buildUnwrapOperations(
+  _client: ViemClient,
   stataToken: Address,
   amount: bigint,
   receiver: Address,
   owner: Address
-): Promise<L1InteropOperation[]> {
+): L1InteropOperation[] {
   const redeemData = encodeFunctionData({
     abi: StataTokenABI,
     functionName: 'redeem',

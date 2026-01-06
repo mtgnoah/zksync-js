@@ -72,7 +72,7 @@ export function createL1CoreResource(
   function toResult<T>(fn: () => Promise<T>): Promise<Result<T>> {
     return fn()
       .then((value) => ({ ok: true as const, value }))
-      .catch((error) => ({ ok: false as const, error }));
+      .catch((error: unknown) => ({ ok: false as const, error }));
   }
 
   return {
@@ -256,7 +256,7 @@ export function createL1CoreResource(
             phase = 'FAILED';
             error = 'Bundle transaction reverted on L2';
           }
-        } catch (err) {
+        } catch {
           // Transaction not found or not confirmed yet
           phase = 'L2_PENDING';
         }
@@ -314,7 +314,8 @@ export function createL1CoreResource(
       return toResult(() => this.wait(h, opts));
     },
 
-    async retryBundle(h: L1InteropWaitable | Hex): Promise<L1InteropStatus> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    retryBundle(handle: L1InteropWaitable | Hex): Promise<L1InteropStatus> {
       // TODO: Implement retry logic
       // 1. Retrieve stored bundle data
       // 2. Resubmit bundle transaction
@@ -324,7 +325,8 @@ export function createL1CoreResource(
       throw new Error('Not implemented: retryBundle');
     },
 
-    async recover(h: L1InteropWaitable | Hex): Promise<L1InteropHandle<WriteContractParameters>> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    recover(handle: L1InteropWaitable | Hex): Promise<L1InteropHandle<WriteContractParameters>> {
       // TODO: Implement recovery logic
       // 1. Get current status
       // 2. Determine recovery action

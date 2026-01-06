@@ -6,7 +6,6 @@ import type { Address } from '../../../../../core/types/primitives';
 import type { L1InteropOperation } from '../../../../../core/types/flows/l1-interop';
 import { L2InteropCenterABI } from '../../../../../core/internal/abi-registry';
 import { getL1InteropAddresses } from '../../../../../core/constants/l1-interop-addresses';
-import { ETH_ADDRESS } from '../../../../../core/constants';
 
 /**
  * Shadow Account Operation for contract calls
@@ -81,10 +80,12 @@ export interface WithdrawalParams {
  * Build withdrawal transaction using ZKsync SDK
  * This should integrate with the existing withdrawals resource
  */
-export async function buildWithdrawalTransaction(
+export function buildWithdrawalTransaction(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   client: ViemClient,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   params: WithdrawalParams
-): Promise<WriteContractParameters> {
+): WriteContractParameters {
   // TODO: This should use the existing sdk.withdrawals.prepare() method
   // For now, this is a placeholder
   // The actual implementation should be:

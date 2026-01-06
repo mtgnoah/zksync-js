@@ -61,11 +61,13 @@ export function createL1InteropResource(
         return isShadowAccountDeployed(client, user);
       },
 
+      // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
       async deployShadowAccount(params: { recoveryAddress?: Address }): Promise<Hex> {
         // TODO: Implement deploy logic
         throw new Error('Not implemented: deployShadowAccount');
       },
 
+      // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
       async estimateGas(params: L1InteropParams): Promise<bigint> {
         // TODO: Implement gas estimation
         throw new Error('Not implemented: estimateGas');

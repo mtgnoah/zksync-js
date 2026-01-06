@@ -73,7 +73,7 @@ export function createL1Resource(
   function toResult<T>(fn: () => Promise<T>): Promise<Result<T>> {
     return fn()
       .then((value) => ({ ok: true as const, value }))
-      .catch((error) => ({ ok: false as const, error }));
+      .catch((error: unknown) => ({ ok: false as const, error }));
   }
 
   /**
@@ -182,7 +182,7 @@ export function createL1Resource(
             status: 'success',
             l1TransactionHash: status.l1FinalizationTxHash,
           };
-        } catch (error) {
+        } catch {
           const status = await core.status(handle);
 
           if (status.phase === 'FAILED') {

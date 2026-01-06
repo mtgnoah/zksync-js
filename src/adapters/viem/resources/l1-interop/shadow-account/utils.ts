@@ -1,7 +1,7 @@
 // src/adapters/viem/resources/l1-interop/shadow-account/utils.ts
 
 import type { ViemClient } from '../../../client';
-import type { Address, Hex } from '../../../../../core/types/primitives';
+import type { Address } from '../../../../../core/types/primitives';
 import { L2InteropCenterABI } from '../../../../../core/internal/abi-registry';
 import { getL1InteropAddresses } from '../../../../../core/constants/l1-interop-addresses';
 
@@ -35,6 +35,7 @@ export async function getShadowAccountAddress(
   // Read from L2InteropCenter contract
   const l2InteropCenterAddress = await getL2InteropCenterAddress(client);
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
   const shadowAccount = (await client.l2.readContract({
     address: l2InteropCenterAddress,
     abi: L2InteropCenterABI,

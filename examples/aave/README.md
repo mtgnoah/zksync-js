@@ -82,11 +82,13 @@ Here's what happens when you deposit ETH to Aave:
 
 ```typescript
 import { aaveDeposit } from './deposit';
+import { parseEther } from 'viem';
 
 // This creates and submits both transactions
 const handle = await aaveDeposit(sdk, {
   asset: 'ETH',
   amount: parseEther('1'),
+  sender: userAddress, // Your L2 wallet address
 });
 
 // Wait for L1 execution (~15 min)
@@ -108,17 +110,47 @@ Under the hood:
    - Shadow Account calls WethGateway.depositETH with 1 ETH
    - You now have aWETH in your Shadow Account on L1
 
+## Example: Supplying USDC to Aave
+
+ERC20 tokens like USDC require a two-step process: approve + supply. Here's how it works:
+
+```typescript
+import { aaveDeposit } from './deposit';
+import { parseUnits } from 'viem';
+
+// Supply 1000 USDC as collateral
+const handle = await aaveDeposit(sdk, {
+  asset: 'USDC',
+  amount: parseUnits('1000', 6), // USDC has 6 decimals
+  sender: userAddress,
+});
+
+// Wait for L1 execution (~15 min)
+const result = await handle.wait();
+```
+
+Under the hood, this creates a bundle with **two operations**:
+
+1. **Approve**: `USDC.approve(AavePool, 1000 USDC)` - Allows the Pool to spend your USDC
+2. **Supply**: `Pool.supply(USDC, 1000, shadowAccount, 0)` - Deposits USDC and credits aUSDC to your Shadow Account
+
+Both operations execute atomically in a single L1 transaction. If the approve succeeds but supply fails, the entire transaction reverts.
+
+**Key difference from ETH**: ETH uses the WethGateway with a payable `depositETH` function (value is sent with the call). ERC20s use the Pool contract directly, which requires pre-approval.
+
 ## Example: Borrowing from Aave
 
 Borrowing requires collateral already deposited. The bundle calls Aave's borrow function:
 
 ```typescript
 import { aaveBorrow, INTEREST_RATE_MODE } from './borrow';
+import { parseUnits } from 'viem';
 
 const handle = await aaveBorrow(sdk, {
   asset: 'USDC',
   amount: parseUnits('1000', 6),
   interestRateMode: INTEREST_RATE_MODE.VARIABLE,
+  sender: userAddress,
 });
 ```
 
@@ -170,9 +202,13 @@ The examples handle ETH and ERC20 tokens differently:
 Before executing, you can get a quote to see the estimated costs:
 
 ```typescript
+import { aaveDepositQuote } from './deposit';
+import { parseEther } from 'viem';
+
 const quote = await aaveDepositQuote(sdk, {
   asset: 'ETH',
   amount: parseEther('1'),
+  sender: userAddress,
 });
 
 console.log('Required funds:', quote.requiredFunds);
