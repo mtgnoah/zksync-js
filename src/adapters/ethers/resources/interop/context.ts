@@ -26,10 +26,9 @@ export async function makeInteropContext(
   dstChain: bigint,
 ): Promise<InteropEthersContext> {
   const srcProvider = client.l2;
-  // For now, use the same L2 provider for destination
-  // TODO: Support multiple L2 providers for cross-L2 interop
-  const dstProvider = client.l2;
-  const signer = client.getL2Signer();
+  // Use chain registry for destination provider, fallback to L2 if not registered
+  const dstProvider = client.getProvider(dstChain) ?? client.l2;
+  const signer = client.signerFor();
 
   const [srcNet, dstNet] = await Promise.all([srcProvider.getNetwork(), dstProvider.getNetwork()]);
   const srcChainId = BigInt(srcNet.chainId.toString());

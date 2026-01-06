@@ -197,9 +197,8 @@ async function queryDstBundleLifecycle(args: {
 }): Promise<{ phase: InteropPhase; dstExecTxHash?: Hex }> {
   const { client, bundleHash, dstChainId } = args;
 
-  // get a provider for the destination chain
-  // TODO: Support multiple L2 providers for cross-L2 interop
-  const dstProvider = client.l2;
+  // get a provider for the destination chain (use chain registry, fallback to L2)
+  const dstProvider = client.getProvider(dstChainId) ?? client.l2;
 
   // get destination handler address
   const { interopHandler } = await wrap(
@@ -409,9 +408,8 @@ export function createInteropFinalizationServices(
     },
 
     async executeBundle(bundleHash, dstChainId) {
-      // 1. get signer for destination chain
-      // Use L2 signer for destination
-      const signer = client.getL2Signer();
+      // 1. get signer for destination chain (use chain registry, fallback to L2)
+      const signer = client.signerFor(dstChainId);
 
       // 2. get interopHandler address
       const { interopHandler } = await wrap(

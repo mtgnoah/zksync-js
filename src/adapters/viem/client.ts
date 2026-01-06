@@ -8,7 +8,7 @@ import type {
   GetContractReturnType,
   Abi,
 } from 'viem';
-import { getContract, createWalletClient } from 'viem';
+import { getContract, createWalletClient, createPublicClient, http } from 'viem';
 import type { ZksRpc } from '../../core/rpc/zks';
 import { zksRpcFromViem } from './rpc';
 
@@ -62,6 +62,16 @@ export interface ViemClient {
   }>;
   refresh(): void;
   baseToken(chainId: bigint): Promise<Address>;
+
+  /** Chain registry for interop destinations */
+  registerChain(chainId: bigint, clientOrUrl: PublicClient | string): void;
+  registerChains(map: Record<string, PublicClient | string>): void;
+  getPublicClient(chainId: bigint): PublicClient | undefined;
+  requirePublicClient(chainId: bigint): PublicClient;
+  listChains(): bigint[];
+
+  /** Get a wallet client connected to L1 or a specific L2 */
+  walletFor(target?: 'l1' | bigint): WalletClient<Transport, Chain, Account>;
 }
 
 type InitArgs = {
@@ -69,6 +79,8 @@ type InitArgs = {
   l2: PublicClient;
   l1Wallet: WalletClient<Transport, Chain, Account>;
   l2Wallet?: WalletClient<Transport, Chain, Account>;
+  /** Optional pre-seeded chain registry (eip155 chainId → PublicClient or RPC URL) for interop destinations */
+  chains?: Record<string, PublicClient | string>;
   overrides?: Partial<ResolvedAddresses>;
 };
 
@@ -93,6 +105,18 @@ export function createViemClient(args: InitArgs): ViemClient {
         l2BaseTokenSystem: GetContractReturnType<typeof IBaseTokenABI, PublicClient>;
       }
     | undefined;
+
+  // Chain registry for interop destinations
+  const chainMap = new Map<bigint, PublicClient>();
+
+  // Pre-seed chain registry if provided
+  if (args.chains) {
+    for (const [k, p] of Object.entries(args.chains)) {
+      const client =
+        typeof p === 'string' ? createPublicClient({ transport: http(p) }) : p;
+      chainMap.set(BigInt(k), client);
+    }
+  }
 
   async function ensureAddresses(): Promise<ResolvedAddresses> {
     if (addrCache) return addrCache;
@@ -177,6 +201,49 @@ export function createViemClient(args: InitArgs): ViemClient {
     cCache = undefined;
   }
 
+  // Chain registry utilities (for interop destinations)
+  function registerChain(chainId: bigint, clientOrUrl: PublicClient | string) {
+    const client =
+      typeof clientOrUrl === 'string' ? createPublicClient({ transport: http(clientOrUrl) }) : clientOrUrl;
+    chainMap.set(chainId, client);
+  }
+
+  function registerChains(map: Record<string, PublicClient | string>) {
+    for (const [k, p] of Object.entries(map)) {
+      registerChain(BigInt(k), p);
+    }
+  }
+
+  function getPublicClient(chainId: bigint) {
+    return chainMap.get(chainId);
+  }
+
+  function requirePublicClient(chainId: bigint) {
+    const p = chainMap.get(chainId);
+    if (!p) throw new Error(`No PublicClient registered for destination chainId ${chainId}`);
+    return p;
+  }
+
+  function listChains(): bigint[] {
+    return [...chainMap.keys()];
+  }
+
+  // Get a wallet client connected to L1 or a specific L2
+  function walletFor(target?: 'l1' | bigint): WalletClient<Transport, Chain, Account> {
+    if (target === 'l1') {
+      return l1Wallet;
+    }
+    if (typeof target === 'bigint') {
+      const publicClient = requirePublicClient(target);
+      return createWalletClient({
+        account: l1Wallet.account,
+        transport: publicClient.transport as unknown as Transport,
+      });
+    }
+    // Default to l2
+    return getL2Wallet();
+  }
+
   async function baseToken(chainId: bigint): Promise<Address> {
     const { bridgehub } = await ensureAddresses();
     const token = (await l1.readContract({
@@ -213,6 +280,12 @@ export function createViemClient(args: InitArgs): ViemClient {
     refresh,
     baseToken,
     getL2Wallet,
+    registerChain,
+    registerChains,
+    getPublicClient,
+    requirePublicClient,
+    listChains,
+    walletFor,
   };
 }
 
