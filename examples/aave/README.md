@@ -1,81 +1,201 @@
 # Aave L1 Interop Examples
 
-This directory contains reference implementations showing how to use the ZKsync SDK's generic L1 interop interface to interact with Aave on Ethereum L1.
+This directory contains reference implementations showing how to use the ZKsync SDK to interact with Aave on Ethereum L1 from an L2 chain.
 
-## Overview
+## How L1 Interop Works
 
-These examples demonstrate the pattern for building protocol integrations using the generic `sdk.l1` API. The SDK doesn't include enshrined protocol integrations - instead, users build their own integrations using the declarative call interface.
+L1 Interop allows users on ZKsync L2 to execute transactions on Ethereum L1 without bridging funds manually. Here's what happens under the hood:
 
-## Files
+### The Two-Transaction Flow
 
-- `constants.ts` - Aave contract addresses and ABIs
-- `deposit.ts` - Deposit assets to Aave (supply collateral)
-- `borrow.ts` - Borrow assets from Aave
-- `withdraw.ts` - Withdraw assets from Aave
-- `repay.ts` - Repay borrowed assets
+When you call `sdk.l1.bundle().call(...).create()`, the SDK executes **two transactions**:
 
-## Basic Usage
+1. **Withdrawal Transaction**: A regular L2→L1 withdrawal that sends ETH to your **Shadow Account** on L1. This uses the SDK's `withdrawals.create()` method internally. The withdrawal provides the funds needed to execute your L1 operations.
+
+2. **Bundle Submission Transaction**: A transaction to the **L2 Interop Center** contract that contains instructions for what to execute on L1. This calls `sendBundleToL1()` with an array of operations (target address, value, and encoded calldata for each call).
+
+### Shadow Accounts
+
+A **Shadow Account** is a smart contract wallet on L1 that is controlled by your L2 address. Key points:
+
+- Each L2 address has a deterministic Shadow Account address on L1
+- The Shadow Account is deployed automatically when your first bundle is executed
+- You can get your Shadow Account address via `sdk.l1.getShadowAccount(yourL2Address)`
+- The Shadow Account executes operations on your behalf (e.g., calling Aave contracts)
+
+### Execution Flow
+
+```
+L2 User Signs Transactions
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Transaction 1: Withdrawal                                   │
+│  - Withdraws ETH from L2 to Shadow Account on L1            │
+│  - Uses sdk.withdrawals.create() internally                  │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Transaction 2: Bundle Submission                            │
+│  - Calls L2InteropCenter.sendBundleToL1()                   │
+│  - Contains array of L1 operations to execute               │
+│  - Each operation: { target, value, data }                  │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+    ~15 min wait (L2→L1 finalization)
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│  L1 Execution (by operator/relayer)                          │
+│  - Proves the L2 messages on L1                             │
+│  - Deploys Shadow Account if needed                         │
+│  - Executes all operations in the bundle                    │
+│  - E.g., calls Aave's depositETH with the withdrawn funds   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Bundle Operations
+
+Each operation in a bundle is an object with:
+- `target`: The L1 contract address to call (e.g., Aave WethGateway)
+- `value`: Amount of ETH to send with the call
+- `data`: Encoded function calldata (the SDK encodes this from ABI + args)
+
+For example, an Aave deposit bundle contains one operation:
+```typescript
+{
+  target: WETH_GATEWAY_ADDRESS,
+  value: depositAmount,  // ETH to deposit
+  data: encodeFunctionData({
+    abi: WethGatewayABI,
+    functionName: 'depositETH',
+    args: [poolAddress, shadowAccount, 0]
+  })
+}
+```
+
+## Example: Supplying ETH to Aave
+
+Here's what happens when you deposit ETH to Aave:
 
 ```typescript
-import { createViemClient, createViemSdk } from '@matterlabs/zksync-js/viem';
 import { aaveDeposit } from './deposit';
 
-// Create SDK
-const client = createViemClient({ ... });
-const sdk = createViemSdk(client);
-
-// Deposit 1 ETH to Aave
+// This creates and submits both transactions
 const handle = await aaveDeposit(sdk, {
   asset: 'ETH',
   amount: parseEther('1'),
 });
 
-// Wait for completion
+// Wait for L1 execution (~15 min)
 const result = await handle.wait();
-console.log('Deposit complete:', result.l1TransactionHash);
 ```
 
-## Pattern
+Under the hood:
 
-Each operation follows the same pattern:
+1. **Transaction 1 (Withdrawal)**: Withdraws 1 ETH + gas buffer from L2 to your Shadow Account on L1
 
-1. **Define the contract calls** using ABI + args (declarative)
-2. **Build a bundle** with `sdk.l1.bundle()`
-3. **Execute** with `.create()`
-4. **Wait** for completion with `.wait()`
+2. **Transaction 2 (Bundle)**: Submits a bundle to L2InteropCenter with one operation:
+   - Target: Aave WethGateway contract
+   - Value: 1 ETH
+   - Data: Encoded `depositETH(pool, shadowAccount, 0)` call
 
-Example:
+3. **L1 Execution**: After ~15 minutes, an operator:
+   - Proves the withdrawal and bundle on L1
+   - Deploys your Shadow Account if it doesn't exist
+   - Shadow Account calls WethGateway.depositETH with 1 ETH
+   - You now have aWETH in your Shadow Account on L1
+
+## Example: Borrowing from Aave
+
+Borrowing requires collateral already deposited. The bundle calls Aave's borrow function:
+
+```typescript
+import { aaveBorrow, INTEREST_RATE_MODE } from './borrow';
+
+const handle = await aaveBorrow(sdk, {
+  asset: 'USDC',
+  amount: parseUnits('1000', 6),
+  interestRateMode: INTEREST_RATE_MODE.VARIABLE,
+});
+```
+
+The bundle contains one operation calling `Pool.borrow()`. The borrowed tokens end up in your Shadow Account.
+
+## Example: Multi-Operation Bundles
+
+You can chain multiple operations in a single bundle. For example, depositing an ERC20 requires approve + supply:
 
 ```typescript
 const handle = await sdk.l1.bundle()
-  // Approve Pool to spend tokens
+  // Operation 1: Approve Pool to spend USDC
   .call({
     target: USDC_ADDRESS,
     abi: erc20Abi,
     functionName: 'approve',
     args: [AAVE_POOL, amount],
   })
-  // Supply to Aave
+  // Operation 2: Supply USDC to Aave
   .call({
     target: AAVE_POOL,
     abi: aavePoolAbi,
     functionName: 'supply',
-    args: [USDC_ADDRESS, amount, onBehalfOf, 0],
+    args: [USDC_ADDRESS, amount, shadowAccount, 0],
   })
   .create();
 ```
 
-## ETH vs ERC20
+Both operations execute atomically in a single L1 transaction.
+
+## ETH vs ERC20 Handling
 
 The examples handle ETH and ERC20 tokens differently:
 
-- **ETH**: Uses `WethGateway` contract (depositETH, withdrawETH, borrowETH, repayETH)
-- **ERC20**: Uses `Pool` contract with approve step (supply, withdraw, borrow, repay)
+**ETH Operations** use the WethGateway contract:
+- `depositETH` - payable, sends ETH with the call
+- `withdrawETH` - requires aWETH approval first
+- `borrowETH` - borrows and unwraps WETH to ETH
+- `repayETH` - payable, sends ETH to repay debt
 
-## Addresses
+**ERC20 Operations** use the Pool contract with approve steps:
+- `supply` - requires token approval to Pool first
+- `withdraw` - no approval needed
+- `borrow` - no approval needed
+- `repay` - requires token approval to Pool first
 
-See `constants.ts` for Aave contract addresses on Ethereum mainnet and Sepolia testnet.
+## Getting Quotes
 
-## Note on Bridge-Back
+Before executing, you can get a quote to see the estimated costs:
 
-To bridge borrowed/withdrawn assets back to L2, add additional calls to the bundle for bridging via the Bridgehub contract. See `borrow.ts` for an example.
+```typescript
+const quote = await aaveDepositQuote(sdk, {
+  asset: 'ETH',
+  amount: parseEther('1'),
+});
+
+console.log('Required funds:', quote.requiredFunds);
+console.log('Current Shadow Account balance:', quote.currentBalance);
+console.log('Amount to bridge from L2:', quote.bridgeAmount);
+console.log('Estimated L1 gas:', quote.estimatedGas);
+console.log('Total cost:', quote.totalCost);
+```
+
+## Files
+
+- `constants.ts` - Aave contract addresses and ABIs for mainnet/testnet
+- `deposit.ts` - Deposit (supply) collateral to Aave
+- `borrow.ts` - Borrow assets from Aave
+- `withdraw.ts` - Withdraw assets from Aave
+- `repay.ts` - Repay borrowed assets
+
+## Important Notes
+
+1. **Finalization Time**: L1 execution happens ~15 minutes after bundle submission (L2 finalization window)
+
+2. **Shadow Account Persistence**: Your Shadow Account persists on L1. Deposited aTokens, borrowed debt, etc. all remain in the Shadow Account
+
+3. **Gas Estimation**: The SDK estimates L1 gas via simulation. A 20% buffer is added for safety since gas prices may change during the finalization window
+
+4. **Funds in Shadow Account**: After operations complete, any remaining funds stay in your Shadow Account. You can use them for future L1 operations or bridge them back to L2
