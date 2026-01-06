@@ -1,6 +1,6 @@
 # SDK Examples
 
-Example scripts for making **deposits (L1 → L2)** and **withdrawals (L2 → L1)** using either `ethers` or `viem` adapters.
+Example scripts for **deposits (L1 → L2)**, **withdrawals (L2 → L1)**, and **L1 Interop (execute L1 transactions from L2)** using either `ethers` or `viem` adapters.
 
 ## 🛠️ Prerequisites
 
@@ -58,4 +58,36 @@ Run any withdrawal script:
 
 ```bash
 bun run examples/ethers/withdrawals/erc20-nonbase.ts
+```
+
+---
+
+### L1 Interop
+
+Execute arbitrary L1 transactions from L2 without manual bridging. See [interop/README.md](./interop/README.md) for detailed documentation.
+
+| Directory       | Description                                    |
+| --------------- | ---------------------------------------------- |
+| `examples/interop/` | L1 Interop documentation and concepts      |
+| `examples/aave/`    | Aave V3 integration (deposit, borrow, etc) |
+
+**Quick example:**
+
+```typescript
+import { createViemSdk } from '@matterlabs/zksync-js/viem';
+
+const sdk = createViemSdk(client);
+
+// Execute any L1 contract call from L2
+const handle = await sdk.l1.bundle()
+  .call({
+    target: CONTRACT_ADDRESS,
+    abi: contractAbi,
+    functionName: 'myFunction',
+    args: [arg1, arg2],
+  })
+  .create();
+
+// Wait for L1 execution (~15 min)
+const result = await handle.wait();
 ```
