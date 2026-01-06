@@ -12,10 +12,10 @@ import type {
 } from '../../../../../../core/types/flows/l1-interop';
 import type { AaveBorrowParams } from '../../../../../../core/types/flows/aave';
 import type { AaveBorrowResource, Result } from './index';
-import { IPoolABI, IERC20ABI, IBridgehubABI } from '../../../../../../core/internal/abi-registry';
+import { IPoolABI, IERC20ABI, IBridgehubABI, IWrappedTokenGatewayV3ABI } from '../../../../../../core/internal/abi-registry';
 import { getAaveAddresses } from '../../../../../../core/constants/aave-addresses';
 import { getShadowAccountAddress } from '../../shadow-account/utils';
-import { resolveAaveAsset } from './assets';
+import { resolveAaveAsset, AAVE_ASSETS } from './assets';
 import { DataEncoding } from '../../services/data-encoding';
 import { calculateBridgeBackGas } from '../../services/gas-estimation';
 import type { L1CoreResource } from '../../core';
@@ -60,25 +60,46 @@ export function createAaveBorrowResource(client: ViemClient, core: L1CoreResourc
       const l1ChainId = await client.l1.getChainId();
       const aaveAddresses = getAaveAddresses(Number(l1ChainId));
 
-      // Resolve asset address (for now only GHO is supported)
+      // Resolve asset address
       const assetAddress = resolveAaveAsset(p.asset);
 
-      // Build IPool.borrow calldata
-      // IPool.borrow(asset, amount, interestRateMode, referralCode, onBehalfOf)
-      const borrowData = encodeFunctionData({
-        abi: IPoolABI,
-        functionName: 'borrow',
-        args: [assetAddress, p.amount, BigInt(p.interestRateMode), 0, shadowAccount],
-      });
+      // Create the operations array
+      const operations: L1InteropOperation[] = [];
 
-      const operations: L1InteropOperation[] = [
-        {
+      // Check if the asset is ETH
+      const isETH = p.asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();
+
+      if (isETH) {
+        // For ETH: use WethGateway.borrowETH
+        // IWrappedTokenGatewayV3.borrowETH(pool, amount, interestRateMode, referralCode)
+        const borrowETHData = encodeFunctionData({
+          abi: IWrappedTokenGatewayV3ABI,
+          functionName: 'borrowETH',
+          args: [aaveAddresses.pool, p.amount, BigInt(p.interestRateMode), 0],
+        });
+
+        operations.push({
+          type: 'call',
+          target: aaveAddresses.wethGateway,
+          value: 0n,
+          data: borrowETHData,
+        });
+      } else {
+        // For ERC20 tokens: use Pool.borrow
+        // IPool.borrow(asset, amount, interestRateMode, referralCode, onBehalfOf)
+        const borrowData = encodeFunctionData({
+          abi: IPoolABI,
+          functionName: 'borrow',
+          args: [assetAddress, p.amount, BigInt(p.interestRateMode), 0, shadowAccount],
+        });
+
+        operations.push({
           type: 'call',
           target: aaveAddresses.pool,
-          value: BigInt(0),
+          value: 0n,
           data: borrowData,
-        },
-      ];
+        });
+      }
 
       // If bridgeBack is true (default), add bridge operations
       if (p.bridgeBack !== false) {

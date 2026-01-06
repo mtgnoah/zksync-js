@@ -12,10 +12,10 @@ import type {
 import type { AaveRepayParams } from '../../../../../../core/types/flows/aave';
 import type { AaveRepayResource, Result } from './index';
 import type { L1CoreResource } from '../../core';
-import { IPoolABI } from '../../../../../../core/internal/abi-registry';
+import { IPoolABI, IWrappedTokenGatewayV3ABI, IERC20ABI } from '../../../../../../core/internal/abi-registry';
 import { getAaveAddresses } from '../../../../../../core/constants/aave-addresses';
 import { getShadowAccountAddress } from '../../shadow-account/utils';
-import { resolveAaveAsset } from './assets';
+import { resolveAaveAsset, AAVE_ASSETS } from './assets';
 
 export function createAaveRepayResource(client: ViemClient, core: L1CoreResource): AaveRepayResource {
   function toResult<T>(fn: () => Promise<T>): Promise<Result<T>> {
@@ -63,22 +63,58 @@ export function createAaveRepayResource(client: ViemClient, core: L1CoreResource
       // Determine on behalf of whom to repay
       const onBehalfOf = p.onBehalfOf ?? shadowAccount;
 
-      // Build IPool.repay calldata
-      // IPool.repay(asset, amount, rateMode, onBehalfOf)
-      const repayData = encodeFunctionData({
-        abi: IPoolABI,
-        functionName: 'repay',
-        args: [assetAddress, p.amount, BigInt(p.interestRateMode), onBehalfOf],
-      });
+      // Create the operations array
+      const operations: L1InteropOperation[] = [];
 
-      const operations: L1InteropOperation[] = [
-        {
+      // Check if the asset is ETH
+      const isETH = p.asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();
+
+      if (isETH) {
+        // For ETH: use WethGateway.repayETH (payable - sends ETH)
+        // IWrappedTokenGatewayV3.repayETH(pool, amount, rateMode, onBehalfOf)
+        const repayETHData = encodeFunctionData({
+          abi: IWrappedTokenGatewayV3ABI,
+          functionName: 'repayETH',
+          args: [aaveAddresses.pool, p.amount, BigInt(p.interestRateMode), onBehalfOf],
+        });
+
+        operations.push({
+          type: 'call',
+          target: aaveAddresses.wethGateway,
+          value: p.amount, // Send ETH with the call
+          data: repayETHData,
+        });
+      } else {
+        // For ERC20 tokens: approve + Pool.repay
+
+        // Step 1: Approve the Pool contract to spend the tokens
+        const approveData = encodeFunctionData({
+          abi: IERC20ABI,
+          functionName: 'approve',
+          args: [aaveAddresses.pool, p.amount],
+        });
+
+        operations.push({
+          type: 'call',
+          target: assetAddress,
+          value: 0n,
+          data: approveData,
+        });
+
+        // Step 2: Call Pool.repay(asset, amount, rateMode, onBehalfOf)
+        const repayData = encodeFunctionData({
+          abi: IPoolABI,
+          functionName: 'repay',
+          args: [assetAddress, p.amount, BigInt(p.interestRateMode), onBehalfOf],
+        });
+
+        operations.push({
           type: 'call',
           target: aaveAddresses.pool,
-          value: BigInt(0),
+          value: 0n,
           data: repayData,
-        },
-      ];
+        });
+      }
 
       // Build L1InteropParams
       const l1InteropParams: L1InteropParams = {

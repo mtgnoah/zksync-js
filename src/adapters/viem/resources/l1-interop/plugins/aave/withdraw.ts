@@ -12,10 +12,10 @@ import type {
 import type { AaveWithdrawParams } from '../../../../../../core/types/flows/aave';
 import type { AaveWithdrawResource, Result } from './index';
 import type { L1CoreResource } from '../../core';
-import { IPoolABI } from '../../../../../../core/internal/abi-registry';
+import { IPoolABI, IWrappedTokenGatewayV3ABI, IERC20ABI } from '../../../../../../core/internal/abi-registry';
 import { getAaveAddresses } from '../../../../../../core/constants/aave-addresses';
 import { getShadowAccountAddress } from '../../shadow-account/utils';
-import { resolveAaveAsset } from './assets';
+import { resolveAaveAsset, AAVE_ASSETS } from './assets';
 
 export function createAaveWithdrawResource(client: ViemClient, core: L1CoreResource): AaveWithdrawResource {
   function toResult<T>(fn: () => Promise<T>): Promise<Result<T>> {
@@ -64,22 +64,58 @@ export function createAaveWithdrawResource(client: ViemClient, core: L1CoreResou
       // Default: keep in ShadowAccount on L1
       const withdrawTo = shadowAccount;
 
-      // Build IPool.withdraw calldata
-      // IPool.withdraw(asset, amount, to)
-      const withdrawData = encodeFunctionData({
-        abi: IPoolABI,
-        functionName: 'withdraw',
-        args: [assetAddress, p.amount, withdrawTo],
-      });
+      // Create the operations array
+      const operations: L1InteropOperation[] = [];
 
-      const operations: L1InteropOperation[] = [
-        {
+      // Check if the asset is ETH
+      const isETH = p.asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();
+
+      if (isETH) {
+        // For ETH: approve aWETH to WethGateway + call withdrawETH
+
+        // Step 1: Approve WethGateway to spend aWETH (aToken)
+        const approveData = encodeFunctionData({
+          abi: IERC20ABI,
+          functionName: 'approve',
+          args: [aaveAddresses.wethGateway, p.amount],
+        });
+
+        operations.push({
+          type: 'call',
+          target: aaveAddresses.aToken, // aWETH token
+          value: 0n,
+          data: approveData,
+        });
+
+        // Step 2: Call WethGateway.withdrawETH(pool, amount, to)
+        const withdrawETHData = encodeFunctionData({
+          abi: IWrappedTokenGatewayV3ABI,
+          functionName: 'withdrawETH',
+          args: [aaveAddresses.pool, p.amount, withdrawTo],
+        });
+
+        operations.push({
+          type: 'call',
+          target: aaveAddresses.wethGateway,
+          value: 0n,
+          data: withdrawETHData,
+        });
+      } else {
+        // For ERC20 tokens: use Pool.withdraw directly
+        // IPool.withdraw(asset, amount, to)
+        const withdrawData = encodeFunctionData({
+          abi: IPoolABI,
+          functionName: 'withdraw',
+          args: [assetAddress, p.amount, withdrawTo],
+        });
+
+        operations.push({
           type: 'call',
           target: aaveAddresses.pool,
-          value: BigInt(0),
+          value: 0n,
           data: withdrawData,
-        },
-      ];
+        });
+      }
 
       // TODO: Add bridge-back operations if p.to?.destination === 'l2'
       // This would require bridging the withdrawn assets back to L2

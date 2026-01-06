@@ -11,10 +11,10 @@ import type {
 } from '../../../../../../core/types/flows/l1-interop';
 import type { AaveDepositParams } from '../../../../../../core/types/flows/aave';
 import type { AaveDepositResource, Result } from './index';
-import { IWrappedTokenGatewayV3ABI } from '../../../../../../core/internal/abi-registry';
+import { IWrappedTokenGatewayV3ABI, IPoolABI, IERC20ABI } from '../../../../../../core/internal/abi-registry';
 import { getAaveAddresses } from '../../../../../../core/constants/aave-addresses';
 import { getShadowAccountAddress } from '../../shadow-account/utils';
-import { resolveAaveAsset } from './assets';
+import { resolveAaveAsset, AAVE_ASSETS } from './assets';
 import type { L1CoreResource } from '../../core';
 
 export function createAaveDepositResource(client: ViemClient, core: L1CoreResource): AaveDepositResource {
@@ -62,26 +62,64 @@ export function createAaveDepositResource(client: ViemClient, core: L1CoreResour
       const l1ChainId = await client.l1.getChainId();
       const aaveAddresses = getAaveAddresses(Number(l1ChainId));
 
-      // Resolve asset (for now only ETH is supported via WethGateway)
+      // Resolve asset address
       const assetAddress = resolveAaveAsset(p.asset);
 
-      // Build the depositETH calldata
-      // IWrappedTokenGatewayV3.depositETH(pool, onBehalfOf, referralCode)
-      const depositETHData = encodeFunctionData({
-        abi: IWrappedTokenGatewayV3ABI,
-        functionName: 'depositETH',
-        args: [aaveAddresses.pool, shadowAccount, 0], // referralCode = 0
-      });
+      // Determine recipient for aTokens
+      const onBehalfOf = p.onBehalfOf ?? shadowAccount;
 
-      // Create the operation
-      const operations: L1InteropOperation[] = [
-        {
+      // Create the operations array
+      const operations: L1InteropOperation[] = [];
+
+      // Check if the asset is ETH
+      const isETH = p.asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();
+
+      if (isETH) {
+        // For ETH: use WethGateway.depositETH
+        // IWrappedTokenGatewayV3.depositETH(pool, onBehalfOf, referralCode)
+        const depositETHData = encodeFunctionData({
+          abi: IWrappedTokenGatewayV3ABI,
+          functionName: 'depositETH',
+          args: [aaveAddresses.pool, onBehalfOf, 0], // referralCode = 0
+        });
+
+        operations.push({
           type: 'call',
           target: aaveAddresses.wethGateway,
           value: p.amount,
           data: depositETHData,
-        },
-      ];
+        });
+      } else {
+        // For ERC20 tokens: approve + Pool.supply
+
+        // Step 1: Approve the Pool contract to spend the tokens
+        const approveData = encodeFunctionData({
+          abi: IERC20ABI,
+          functionName: 'approve',
+          args: [aaveAddresses.pool, p.amount],
+        });
+
+        operations.push({
+          type: 'call',
+          target: assetAddress,
+          value: 0n,
+          data: approveData,
+        });
+
+        // Step 2: Call Pool.supply(asset, amount, onBehalfOf, referralCode)
+        const supplyData = encodeFunctionData({
+          abi: IPoolABI,
+          functionName: 'supply',
+          args: [assetAddress, p.amount, onBehalfOf, 0], // referralCode = 0
+        });
+
+        operations.push({
+          type: 'call',
+          target: aaveAddresses.pool,
+          value: 0n,
+          data: supplyData,
+        });
+      }
 
       // TODO: Add bridge-back operations if p.bridgeBack is specified
       // This would require:
