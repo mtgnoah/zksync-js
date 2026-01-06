@@ -1,6 +1,6 @@
 // src/core/errors/l1-interop-errors.ts
 
-import type { Address, Hex } from '../types/primitives';
+import type { Address } from '../types/primitives';
 
 /**
  * Base error class for L1 Interop operations
@@ -57,32 +57,6 @@ export class L1ExecutionFailedError extends L1InteropError {
 }
 
 /**
- * Aave insufficient collateral error
- */
-export class AaveInsufficientCollateralError extends L1InteropError {
-  constructor(required: bigint, available: bigint) {
-    super(
-      `Insufficient collateral for borrow. Required: ${required}, Available: ${available}`,
-      'AAVE_INSUFFICIENT_COLLATERAL',
-      { required, available }
-    );
-    this.name = 'AaveInsufficientCollateralError';
-    Object.setPrototypeOf(this, AaveInsufficientCollateralError.prototype);
-  }
-}
-
-/**
- * Aave market frozen error
- */
-export class AaveMarketFrozenError extends L1InteropError {
-  constructor(asset: Address) {
-    super(`Aave market for asset ${asset} is frozen`, 'AAVE_MARKET_FROZEN', { asset });
-    this.name = 'AaveMarketFrozenError';
-    Object.setPrototypeOf(this, AaveMarketFrozenError.prototype);
-  }
-}
-
-/**
  * Insufficient gas error
  */
 export class InsufficientGasError extends L1InteropError {
@@ -118,17 +92,6 @@ export class RebasingTokenError extends L1InteropError {
     );
     this.name = 'RebasingTokenError';
     Object.setPrototypeOf(this, RebasingTokenError.prototype);
-  }
-}
-
-/**
- * Unknown asset error
- */
-export class UnknownAssetError extends L1InteropError {
-  constructor(asset: string) {
-    super(`Unknown Aave asset: ${asset}`, 'UNKNOWN_ASSET', { asset });
-    this.name = 'UnknownAssetError';
-    Object.setPrototypeOf(this, UnknownAssetError.prototype);
   }
 }
 

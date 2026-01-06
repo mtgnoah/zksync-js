@@ -99,17 +99,20 @@ export async function buildWithdrawalTransaction(
 }
 
 /**
- * Estimate gas for L1 operations
+ * Estimate gas for L1 operations via eth_call simulation
  */
 export async function estimateL1Gas(
   client: ViemClient,
-  operations: readonly L1InteropOperation[]
+  operations: readonly L1InteropOperation[],
+  shadowAccount?: Address
 ): Promise<bigint> {
-  // TODO: Implement gas estimation by simulating calls on L1
-  // This should estimate gas for each operation and sum them up
-  // For now, use a conservative estimate
+  // If no operations, return minimal gas
+  if (operations.length === 0) {
+    return BigInt(21_000);
+  }
 
-  const baseGasPerOp = BigInt(200_000); // Base gas per operation
+  // Base gas per operation (fallback)
+  const baseGasPerOp = BigInt(200_000);
   const totalOps = operations.reduce((acc, op) => {
     if (op.type === 'multicall') {
       return acc + op.calls.length;
@@ -117,7 +120,38 @@ export async function estimateL1Gas(
     return acc + 1;
   }, 0);
 
-  return baseGasPerOp * BigInt(totalOps);
+  // Fallback estimate
+  const fallbackEstimate = baseGasPerOp * BigInt(totalOps);
+
+  // If no shadow account provided, use fallback
+  if (!shadowAccount) {
+    return fallbackEstimate;
+  }
+
+  // Try to simulate each operation via eth_call on L1
+  let totalGas = BigInt(0);
+  const ops = convertToShadowAccountOps(operations);
+
+  for (const op of ops) {
+    try {
+      // Simulate the call from the shadow account
+      const gasEstimate = await client.l1.estimateGas({
+        account: shadowAccount,
+        to: op.target,
+        value: op.value,
+        data: op.data,
+      });
+
+      // Add 20% buffer for safety
+      totalGas += (gasEstimate * BigInt(120)) / BigInt(100);
+    } catch {
+      // If simulation fails, use fallback for this operation
+      totalGas += baseGasPerOp;
+    }
+  }
+
+  // Use the higher of simulation or fallback (safety)
+  return totalGas > fallbackEstimate ? totalGas : fallbackEstimate;
 }
 
 /**

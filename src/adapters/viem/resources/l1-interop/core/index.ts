@@ -86,8 +86,8 @@ export function createL1CoreResource(
       // 2. Get ShadowAccount address
       const shadowAccount = await getShadowAccountAddress(client, sender);
 
-      // 3. Estimate L1 gas for operations
-      const l1GasEstimate = await estimateL1Gas(client, p.operations);
+      // 3. Estimate L1 gas for operations (with simulation if possible)
+      const l1GasEstimate = await estimateL1Gas(client, p.operations, shadowAccount);
 
       // 4. Calculate bridge-back gas if needed
       let bridgeBackGas: bigint | undefined;

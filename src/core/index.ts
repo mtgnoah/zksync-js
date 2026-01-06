@@ -45,6 +45,5 @@ export type * from './types/flows/deposits';
 export type * from './types/flows/withdrawals';
 export type * from './types/flows/interop';
 export type * from './types/flows/l1-interop';
-export type * from './types/flows/aave';
 export type * from './types/flows/route';
 export type * from './types/primitives';

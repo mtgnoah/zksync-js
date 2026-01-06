@@ -1,20 +1,10 @@
 // src/adapters/viem/resources/l1-interop/index.ts
 
-import type { WriteContractParameters } from 'viem';
 import type { ViemClient } from '../../client';
 import type { Address, Hex } from '../../../../core/types/primitives';
-import type {
-  L1InteropParams,
-  L1InteropQuote,
-  L1InteropHandle,
-  L1InteropWaitable,
-  L1InteropPlan,
-  L1InteropStatus,
-  L1InteropPhase,
-} from '../../../../core/types/flows/l1-interop';
+import type { L1InteropParams } from '../../../../core/types/flows/l1-interop';
 
 import { createL1CoreResource, type L1CoreResource } from './core';
-import { createAaveResource, type AaveResource } from './plugins/aave';
 import { getShadowAccountAddress, isShadowAccountDeployed } from './shadow-account/utils';
 
 /**
@@ -29,9 +19,6 @@ export interface WithdrawalsResourceForInterop {
 export interface L1InteropResource {
   /** Core generic L1 execution */
   core: L1CoreResource;
-
-  /** Aave plugin */
-  aave: AaveResource;
 
   /** Shared utilities */
   utils: {
@@ -52,9 +39,6 @@ export interface L1InteropResource {
 /** === Core Resource (Generic L1 Execution) === */
 export type { L1CoreResource } from './core';
 
-/** === Aave Plugin Resource === */
-export type { AaveResource } from './plugins/aave';
-
 /** === Result Type === */
 export type Result<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
@@ -67,7 +51,6 @@ export function createL1InteropResource(
 
   return {
     core,
-    aave: createAaveResource(client, core),
 
     utils: {
       async getShadowAccount(user: Address): Promise<Address> {

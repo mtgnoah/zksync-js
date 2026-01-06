@@ -13,9 +13,9 @@ import {
 } from './resources/withdrawals/index';
 
 import {
-  createL1InteropResource,
-  type L1InteropResource as L1InteropResourceType,
-} from './resources/l1-interop/index';
+  createL1Resource,
+  type L1Resource as L1ResourceType,
+} from './resources/l1/index';
 
 import type { Address, Hex } from '../../core/types';
 import { isAddressEq } from '../../core/utils/addr';
@@ -47,7 +47,7 @@ type ViemContracts = {
 export interface ViemSdk {
   deposits: DepositsResourceType;
   withdrawals: WithdrawalsResourceType;
-  l1Interop: L1InteropResourceType;
+  l1: L1ResourceType;
   helpers: {
     // addresses & contracts
     addresses(): Promise<ResolvedAddresses>;
@@ -68,12 +68,12 @@ export interface ViemSdk {
 export function createViemSdk(client: ViemClient): ViemSdk {
   const deposits = createDepositsResource(client);
   const withdrawals = createWithdrawalsResource(client);
-  const l1Interop = createL1InteropResource(client, withdrawals);
+  const l1 = createL1Resource(client, withdrawals);
 
   return {
     deposits,
     withdrawals,
-    l1Interop,
+    l1,
 
     helpers: {
       addresses: () => client.ensureAddresses(),
