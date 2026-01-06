@@ -19,9 +19,11 @@ export interface AaveDepositParams {
   asset: AaveAssetSymbol | Address;
   /** Amount to deposit */
   amount: bigint;
-  /** Recipient of aTokens (defaults to ShadowAccount) */
+  /** L2 sender address (used to compute ShadowAccount) */
+  sender: Address;
+  /** Recipient of aTokens (defaults to sender's ShadowAccount) */
   onBehalfOf?: Address;
-  /** L1 chain ID (defaults to connected L1) */
+  /** L1 chain ID (defaults to Sepolia) */
   l1ChainId?: number;
 }
 
@@ -41,12 +43,14 @@ export interface AaveDepositParams {
  * const handle = await aaveDeposit(sdk, {
  *   asset: 'ETH',
  *   amount: parseEther('1'),
+ *   sender: userAddress, // Your L2 wallet address
  * });
  *
  * // Deposit 1000 USDC
  * const handle = await aaveDeposit(sdk, {
  *   asset: 'USDC',
  *   amount: parseUnits('1000', 6),
+ *   sender: userAddress,
  * });
  *
  * // Wait for completion
@@ -57,7 +61,7 @@ export async function aaveDeposit(
   sdk: ViemSdk,
   params: AaveDepositParams
 ): Promise<L1Handle> {
-  const { asset, amount, onBehalfOf, l1ChainId } = params;
+  const { asset, amount, sender, onBehalfOf, l1ChainId } = params;
 
   // Resolve asset address
   const assetAddress = resolveAaveAsset(asset);
@@ -66,12 +70,9 @@ export async function aaveDeposit(
   const chainId = l1ChainId ?? 11155111; // Default to Sepolia
   const aaveAddresses = getAaveAddresses(chainId);
 
-  // Get ShadowAccount address for onBehalfOf
-  const sender = await sdk.l1.getShadowAccount(
-    // Use connected wallet address - SDK will handle this
-    '0x0000000000000000000000000000000000000000' as Address
-  );
-  const recipient = onBehalfOf ?? sender;
+  // Get ShadowAccount address - this is where aTokens will be credited
+  const shadowAccount = await sdk.l1.getShadowAccount(sender);
+  const recipient = onBehalfOf ?? shadowAccount;
 
   // Check if asset is ETH
   const isETH = asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();
@@ -115,7 +116,7 @@ export async function aaveDepositQuote(
   sdk: ViemSdk,
   params: AaveDepositParams
 ) {
-  const { asset, amount, onBehalfOf, l1ChainId } = params;
+  const { asset, amount, sender, onBehalfOf, l1ChainId } = params;
 
   // Resolve asset address
   const assetAddress = resolveAaveAsset(asset);
@@ -125,10 +126,8 @@ export async function aaveDepositQuote(
   const aaveAddresses = getAaveAddresses(chainId);
 
   // Get ShadowAccount address
-  const sender = await sdk.l1.getShadowAccount(
-    '0x0000000000000000000000000000000000000000' as Address
-  );
-  const recipient = onBehalfOf ?? sender;
+  const shadowAccount = await sdk.l1.getShadowAccount(sender);
+  const recipient = onBehalfOf ?? shadowAccount;
 
   // Check if asset is ETH
   const isETH = asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();

@@ -19,9 +19,11 @@ export interface AaveWithdrawParams {
   asset: AaveAssetSymbol | Address;
   /** Amount to withdraw (use MaxUint256 for max) */
   amount: bigint;
+  /** L2 sender address (used to compute ShadowAccount) */
+  sender: Address;
   /** Recipient of withdrawn assets (defaults to ShadowAccount) */
   to?: Address;
-  /** L1 chain ID (defaults to connected L1) */
+  /** L1 chain ID (defaults to Sepolia) */
   l1ChainId?: number;
 }
 
@@ -30,6 +32,8 @@ export interface AaveWithdrawParams {
  *
  * For ETH: Approve aWETH to WethGateway + call withdrawETH
  * For ERC20: Use Pool.withdraw directly
+ *
+ * Withdrawn assets go to the ShadowAccount (or specified recipient).
  *
  * @param sdk - ZKsync SDK instance
  * @param params - Withdraw parameters
@@ -41,12 +45,14 @@ export interface AaveWithdrawParams {
  * const handle = await aaveWithdraw(sdk, {
  *   asset: 'ETH',
  *   amount: parseEther('1'),
+ *   sender: userAddress,
  * });
  *
- * // Withdraw all USDC
+ * // Withdraw all USDC (use MaxUint256)
  * const handle = await aaveWithdraw(sdk, {
  *   asset: 'USDC',
- *   amount: MaxUint256, // Withdraw max
+ *   amount: MaxUint256,
+ *   sender: userAddress,
  * });
  * ```
  */
@@ -54,7 +60,7 @@ export async function aaveWithdraw(
   sdk: ViemSdk,
   params: AaveWithdrawParams
 ): Promise<L1Handle> {
-  const { asset, amount, to, l1ChainId } = params;
+  const { asset, amount, sender, to, l1ChainId } = params;
 
   // Resolve asset address
   const assetAddress = resolveAaveAsset(asset);
@@ -63,10 +69,8 @@ export async function aaveWithdraw(
   const chainId = l1ChainId ?? 11155111; // Default to Sepolia
   const aaveAddresses = getAaveAddresses(chainId);
 
-  // Get ShadowAccount address for recipient
-  const shadowAccount = await sdk.l1.getShadowAccount(
-    '0x0000000000000000000000000000000000000000' as Address
-  );
+  // Get ShadowAccount address - withdrawn funds go here by default
+  const shadowAccount = await sdk.l1.getShadowAccount(sender);
   const recipient = to ?? shadowAccount;
 
   // Check if asset is ETH
@@ -110,15 +114,12 @@ export async function aaveWithdrawQuote(
   sdk: ViemSdk,
   params: AaveWithdrawParams
 ) {
-  const { asset, amount, to, l1ChainId } = params;
+  const { asset, amount, sender, to, l1ChainId } = params;
 
   const assetAddress = resolveAaveAsset(asset);
   const chainId = l1ChainId ?? 11155111;
   const aaveAddresses = getAaveAddresses(chainId);
-
-  const shadowAccount = await sdk.l1.getShadowAccount(
-    '0x0000000000000000000000000000000000000000' as Address
-  );
+  const shadowAccount = await sdk.l1.getShadowAccount(sender);
   const recipient = to ?? shadowAccount;
 
   const isETH = asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();

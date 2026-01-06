@@ -22,7 +22,9 @@ export interface AaveBorrowParams {
   amount: bigint;
   /** Interest rate mode (1 = stable, 2 = variable) */
   interestRateMode: InterestRateMode;
-  /** L1 chain ID (defaults to connected L1) */
+  /** L2 sender address (used to compute ShadowAccount) */
+  sender: Address;
+  /** L1 chain ID (defaults to Sepolia) */
   l1ChainId?: number;
 }
 
@@ -33,6 +35,7 @@ export interface AaveBorrowParams {
  * For ERC20: Uses Pool.borrow
  *
  * Note: Borrower must have sufficient collateral deposited in Aave.
+ * The borrowed assets end up in the ShadowAccount on L1.
  *
  * @param sdk - ZKsync SDK instance
  * @param params - Borrow parameters
@@ -45,6 +48,7 @@ export interface AaveBorrowParams {
  *   asset: 'ETH',
  *   amount: parseEther('0.5'),
  *   interestRateMode: INTEREST_RATE_MODE.VARIABLE,
+ *   sender: userAddress,
  * });
  *
  * // Borrow 1000 USDC with stable rate
@@ -52,6 +56,7 @@ export interface AaveBorrowParams {
  *   asset: 'USDC',
  *   amount: parseUnits('1000', 6),
  *   interestRateMode: INTEREST_RATE_MODE.STABLE,
+ *   sender: userAddress,
  * });
  * ```
  */
@@ -59,7 +64,7 @@ export async function aaveBorrow(
   sdk: ViemSdk,
   params: AaveBorrowParams
 ): Promise<L1Handle> {
-  const { asset, amount, interestRateMode, l1ChainId } = params;
+  const { asset, amount, interestRateMode, sender, l1ChainId } = params;
 
   // Resolve asset address
   const assetAddress = resolveAaveAsset(asset);
@@ -68,10 +73,8 @@ export async function aaveBorrow(
   const chainId = l1ChainId ?? 11155111; // Default to Sepolia
   const aaveAddresses = getAaveAddresses(chainId);
 
-  // Get ShadowAccount address
-  const shadowAccount = await sdk.l1.getShadowAccount(
-    '0x0000000000000000000000000000000000000000' as Address
-  );
+  // Get ShadowAccount address - borrowed funds go here
+  const shadowAccount = await sdk.l1.getShadowAccount(sender);
 
   // Check if asset is ETH
   const isETH = asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();
@@ -88,6 +91,7 @@ export async function aaveBorrow(
       .create();
   } else {
     // ERC20 borrow: Use Pool.borrow
+    // onBehalfOf is the ShadowAccount (who has the collateral and will owe the debt)
     return sdk.l1.bundle()
       .call({
         target: aaveAddresses.pool,
@@ -106,15 +110,12 @@ export async function aaveBorrowQuote(
   sdk: ViemSdk,
   params: AaveBorrowParams
 ) {
-  const { asset, amount, interestRateMode, l1ChainId } = params;
+  const { asset, amount, interestRateMode, sender, l1ChainId } = params;
 
   const assetAddress = resolveAaveAsset(asset);
   const chainId = l1ChainId ?? 11155111;
   const aaveAddresses = getAaveAddresses(chainId);
-
-  const shadowAccount = await sdk.l1.getShadowAccount(
-    '0x0000000000000000000000000000000000000000' as Address
-  );
+  const shadowAccount = await sdk.l1.getShadowAccount(sender);
 
   const isETH = asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();
 

@@ -23,9 +23,11 @@ export interface AaveRepayParams {
   amount: bigint;
   /** Interest rate mode of the debt (1 = stable, 2 = variable) */
   interestRateMode: InterestRateMode;
-  /** Address of the borrower (defaults to ShadowAccount) */
+  /** L2 sender address (used to compute ShadowAccount) */
+  sender: Address;
+  /** Address of the borrower to repay for (defaults to sender's ShadowAccount) */
   onBehalfOf?: Address;
-  /** L1 chain ID (defaults to connected L1) */
+  /** L1 chain ID (defaults to Sepolia) */
   l1ChainId?: number;
 }
 
@@ -34,6 +36,8 @@ export interface AaveRepayParams {
  *
  * For ETH: Uses WethGateway.repayETH (payable - sends ETH)
  * For ERC20: Uses approve + Pool.repay
+ *
+ * The repayment uses funds from the ShadowAccount to pay down the debt.
  *
  * @param sdk - ZKsync SDK instance
  * @param params - Repay parameters
@@ -46,13 +50,15 @@ export interface AaveRepayParams {
  *   asset: 'ETH',
  *   amount: parseEther('0.5'),
  *   interestRateMode: INTEREST_RATE_MODE.VARIABLE,
+ *   sender: userAddress,
  * });
  *
- * // Repay all USDC debt
+ * // Repay all USDC debt (use MaxUint256)
  * const handle = await aaveRepay(sdk, {
  *   asset: 'USDC',
- *   amount: MaxUint256, // Repay max
+ *   amount: MaxUint256,
  *   interestRateMode: INTEREST_RATE_MODE.STABLE,
+ *   sender: userAddress,
  * });
  * ```
  */
@@ -60,7 +66,7 @@ export async function aaveRepay(
   sdk: ViemSdk,
   params: AaveRepayParams
 ): Promise<L1Handle> {
-  const { asset, amount, interestRateMode, onBehalfOf, l1ChainId } = params;
+  const { asset, amount, interestRateMode, sender, onBehalfOf, l1ChainId } = params;
 
   // Resolve asset address
   const assetAddress = resolveAaveAsset(asset);
@@ -69,10 +75,8 @@ export async function aaveRepay(
   const chainId = l1ChainId ?? 11155111; // Default to Sepolia
   const aaveAddresses = getAaveAddresses(chainId);
 
-  // Get ShadowAccount address
-  const shadowAccount = await sdk.l1.getShadowAccount(
-    '0x0000000000000000000000000000000000000000' as Address
-  );
+  // Get ShadowAccount address - this is who owes the debt
+  const shadowAccount = await sdk.l1.getShadowAccount(sender);
   const borrower = onBehalfOf ?? shadowAccount;
 
   // Check if asset is ETH
@@ -117,15 +121,12 @@ export async function aaveRepayQuote(
   sdk: ViemSdk,
   params: AaveRepayParams
 ) {
-  const { asset, amount, interestRateMode, onBehalfOf, l1ChainId } = params;
+  const { asset, amount, interestRateMode, sender, onBehalfOf, l1ChainId } = params;
 
   const assetAddress = resolveAaveAsset(asset);
   const chainId = l1ChainId ?? 11155111;
   const aaveAddresses = getAaveAddresses(chainId);
-
-  const shadowAccount = await sdk.l1.getShadowAccount(
-    '0x0000000000000000000000000000000000000000' as Address
-  );
+  const shadowAccount = await sdk.l1.getShadowAccount(sender);
   const borrower = onBehalfOf ?? shadowAccount;
 
   const isETH = asset === 'ETH' || assetAddress.toLowerCase() === AAVE_ASSETS.ETH.toLowerCase();
