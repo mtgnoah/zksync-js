@@ -133,17 +133,6 @@ export class UnknownAssetError extends L1InteropError {
 }
 
 /**
- * Relayer error
- */
-export class RelayerError extends L1InteropError {
-  constructor(message: string, details?: unknown) {
-    super(`Relayer error: ${message}`, 'RELAYER_ERROR', details);
-    this.name = 'RelayerError';
-    Object.setPrototypeOf(this, RelayerError.prototype);
-  }
-}
-
-/**
  * Timeout error
  */
 export class TimeoutError extends L1InteropError {

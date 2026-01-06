@@ -41,12 +41,6 @@ export interface AaveDepositParams {
     /** L2 recipient (defaults to sender) */
     recipient?: Address;
   };
-
-  /** Optional relayer for automatic L1 finalization */
-  relayer?: {
-    url: string;
-    finalizationDelay?: number;
-  };
 }
 
 /** === Borrow === */
@@ -68,12 +62,6 @@ export interface AaveBorrowParams {
     /** L2 recipient (defaults to sender) */
     recipient?: Address;
   };
-
-  /** Optional relayer for automatic L1 finalization */
-  relayer?: {
-    url: string;
-    finalizationDelay?: number;
-  };
 }
 
 /** === Withdraw === */
@@ -94,12 +82,6 @@ export interface AaveWithdrawParams {
     /** If L2, recipient address (defaults to sender) */
     recipient?: Address;
   };
-
-  /** Optional relayer for automatic L1 finalization */
-  relayer?: {
-    url: string;
-    finalizationDelay?: number;
-  };
 }
 
 /** === Repay === */
@@ -118,12 +100,6 @@ export interface AaveRepayParams {
 
   /** Account whose debt is being repaid (defaults to ShadowAccount) */
   onBehalfOf?: Address;
-
-  /** Optional relayer for automatic L1 finalization */
-  relayer?: {
-    url: string;
-    finalizationDelay?: number;
-  };
 }
 
 /** === Position Info === */

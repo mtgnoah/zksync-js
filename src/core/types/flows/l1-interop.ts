@@ -30,14 +30,6 @@ export interface L1InteropParams {
 
   /** Optional recovery address on L1 (for emergency access) */
   recoveryAddress?: Address;
-
-  /** Optional relayer configuration for automatic finalization */
-  relayer?: {
-    /** Relayer endpoint URL */
-    url: string;
-    /** Finalization delay in seconds (default: 300) */
-    finalizationDelay?: number;
-  };
 }
 
 /** === Quote === */
@@ -88,9 +80,6 @@ export interface L1InteropHandle<Tx> extends Handle<Record<string, Hex>, 'l1-dir
 
   /** Bundle operations */
   operations: readonly L1InteropOperation[];
-
-  /** Relayer tracking ID */
-  relayerTrackingId?: string;
 }
 
 /** === Status & Phases === */

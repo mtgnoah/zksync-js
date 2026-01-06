@@ -180,7 +180,6 @@ export function createAaveBorrowResource(client: ViemClient, core: L1CoreResourc
       const l1InteropParams: L1InteropParams = {
         sender,
         operations,
-        relayer: p.relayer,
       };
 
       // Use the core L1Interop resource to execute the operation

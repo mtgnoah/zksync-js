@@ -208,31 +208,7 @@ export function createL1CoreResource(
         }
       }
 
-      // 5. Register with relayer (if provided)
-      let relayerTrackingId: string | undefined;
-      if (p.relayer) {
-        try {
-          const { RelayerClient } = await import('../services/relayer-client');
-          const relayerClient = new RelayerClient(p.relayer.url);
-
-          const response = await relayerClient.registerOperation({
-            l2WithdrawalTxHash,
-            l2BundleTxHash,
-            shadowAccount: plan.summary.shadowAccount,
-            operations: p.operations,
-          });
-
-          if (response.success) {
-            relayerTrackingId = response.trackingId;
-          } else {
-            console.warn('Relayer registration failed:', response.error);
-          }
-        } catch (error) {
-          console.warn('Failed to register with relayer:', error);
-        }
-      }
-
-      // 6. Return handle
+      // 5. Return handle
       return {
         kind: 'l1-interop',
         plan,
@@ -244,7 +220,6 @@ export function createL1CoreResource(
         l2BundleTxHash,
         shadowAccount: plan.summary.shadowAccount,
         operations: p.operations,
-        relayerTrackingId,
       };
     },
 
@@ -256,7 +231,6 @@ export function createL1CoreResource(
       // 1. Extract transaction hashes from handle
       let l2WithdrawalTxHash: Hex;
       let l2BundleTxHash: Hex | undefined;
-      let relayerTrackingId: string | undefined;
 
       if (typeof h === 'string') {
         // Just a transaction hash - use it as bundle hash
@@ -265,7 +239,6 @@ export function createL1CoreResource(
       } else {
         l2WithdrawalTxHash = h.l2WithdrawalTxHash ?? '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex;
         l2BundleTxHash = h.l2BundleTxHash;
-        relayerTrackingId = 'relayerTrackingId' in h ? h.relayerTrackingId : undefined;
       }
 
       let phase: L1InteropPhase = 'L2_PENDING';
@@ -289,18 +262,7 @@ export function createL1CoreResource(
         }
       }
 
-      // 3. Check relayer status (if tracking ID available)
-      if (relayerTrackingId && phase === 'L2_CONFIRMED') {
-        try {
-          const { RelayerClient } = await import('../services/relayer-client');
-          // We need to get the relayer URL somehow - for now skip this
-          // TODO: Store relayer URL in handle or pass it as parameter
-        } catch (err) {
-          // Relayer not available
-        }
-      }
-
-      // 4. Determine if ready to finalize (simplified logic)
+      // 3. Determine if ready to finalize (simplified logic)
       // TODO: Check actual finalization window time
       if (phase === 'L2_CONFIRMED') {
         // Assume ready after confirmation (in real implementation, check timestamp)
