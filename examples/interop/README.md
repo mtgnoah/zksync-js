@@ -1,30 +1,173 @@
-# L1 Interop
+# ZKsync Interop
 
-L1 Interop allows ZKsync L2 users to execute arbitrary transactions on Ethereum L1 without manually bridging funds. This enables seamless interaction with L1 DeFi protocols (Aave, Uniswap, Compound, etc.) directly from L2.
+The ZKsync SDK provides two interop capabilities:
 
-## Overview
+1. **L2→L2 Interop**: Send tokens and execute calls between ZKsync L2 chains
+2. **L1 Interop**: Execute arbitrary transactions on Ethereum L1 from L2
 
-### The Problem
+Both follow the same Stripe-style API pattern: `quote()` → `prepare()` → `create()` → `wait()`
 
-Traditionally, to interact with L1 protocols from L2, you would need to:
-1. Manually withdraw funds from L2 to L1 (~15 min wait)
-2. Execute your L1 transactions
-3. Bridge funds back to L2 if needed
+---
 
-This is slow, expensive, and requires multiple manual steps.
+## L2→L2 Interop
 
-### The Solution: L1 Interop
+Send tokens and execute remote calls between ZKsync L2 chains without manual bridging.
 
-With L1 Interop, you simply describe what you want to do on L1, and the SDK handles everything:
+### Quick Start
 
 ```typescript
-// Execute any L1 contract call from L2
+import { createEthersSdk } from '@matterlabs/zksync-js/ethers';
+
+const sdk = createEthersSdk(client);
+
+// Send tokens to another L2 chain
+const handle = await sdk.interop.create({
+  dst: 324n, // Destination chain ID
+  actions: [
+    { type: 'sendNative', to: recipientAddress, amount: parseEther('1') },
+  ],
+});
+
+// Wait for execution on destination
+await sdk.interop.wait(handle, { for: 'executed' });
+```
+
+### Action Types
+
+L2→L2 interop supports three action types:
+
+```typescript
+// Send native token (ETH or base token)
+{ type: 'sendNative', to: Address, amount: bigint }
+
+// Send ERC20 tokens
+{ type: 'sendErc20', token: Address, to: Address, amount: bigint }
+
+// Execute arbitrary call on destination
+{ type: 'call', to: Address, data: Hex, value?: bigint }
+```
+
+### Examples
+
+#### Send Native Token
+
+```typescript
+const handle = await sdk.interop.create({
+  dst: 324n, // ZKsync Era chain ID
+  actions: [
+    { type: 'sendNative', to: '0x...recipient', amount: parseEther('0.5') },
+  ],
+});
+```
+
+#### Send ERC20 Tokens
+
+```typescript
+const handle = await sdk.interop.create({
+  dst: 324n,
+  actions: [
+    {
+      type: 'sendErc20',
+      token: USDC_ADDRESS,
+      to: recipientAddress,
+      amount: parseUnits('100', 6)
+    },
+  ],
+});
+```
+
+#### Remote Contract Call
+
+```typescript
+const handle = await sdk.interop.create({
+  dst: 324n,
+  actions: [
+    {
+      type: 'call',
+      to: CONTRACT_ADDRESS,
+      data: encodeFunctionData({
+        abi: contractAbi,
+        functionName: 'myFunction',
+        args: [arg1, arg2],
+      }),
+      value: parseEther('0.1'), // Optional ETH to send
+    },
+  ],
+});
+```
+
+#### Multiple Actions (Bundle)
+
+```typescript
+const handle = await sdk.interop.create({
+  dst: 324n,
+  actions: [
+    { type: 'sendNative', to: recipient1, amount: parseEther('1') },
+    { type: 'sendErc20', token: USDC, to: recipient2, amount: parseUnits('500', 6) },
+    { type: 'call', to: contract, data: calldata },
+  ],
+});
+```
+
+### API Reference
+
+```typescript
+// Get quote (estimated costs, approvals needed)
+const quote = await sdk.interop.quote({
+  dst: chainId,
+  actions: [...],
+});
+
+// quote.route: 'direct' | 'indirect'
+// quote.approvalsNeeded: ApprovalNeed[]
+// quote.totalActionValue: bigint
+// quote.bridgedTokenTotal: bigint
+
+// Prepare (build transactions without executing)
+const plan = await sdk.interop.prepare({ dst, actions });
+
+// Create (execute source chain transactions)
+const handle = await sdk.interop.create({ dst, actions });
+
+// Check status
+const status = await sdk.interop.status(handle);
+// status.phase: 'SENT' | 'VERIFIED' | 'EXECUTED' | 'UNBUNDLED' | 'FAILED' | 'UNKNOWN'
+
+// Wait for verification or execution
+await sdk.interop.wait(handle, { for: 'verified' });
+await sdk.interop.wait(handle, { for: 'executed' });
+
+// Finalize (execute bundle on destination - usually done by relayer)
+const result = await sdk.interop.finalize(handle);
+```
+
+### Routing
+
+The SDK automatically selects the optimal route:
+
+- **Direct**: Used when source and destination chains share the same base token. Most efficient.
+- **Indirect**: Used for ERC20 transfers or when base tokens differ. Routes through the asset router.
+
+---
+
+## L1 Interop
+
+Execute arbitrary transactions on Ethereum L1 from ZKsync L2 without manual bridging.
+
+### Quick Start
+
+```typescript
+import { createViemSdk } from '@matterlabs/zksync-js/viem';
+
+const sdk = createViemSdk(client);
+
+// Execute any L1 contract call
 const handle = await sdk.l1.bundle()
   .call({
-    target: UNISWAP_ROUTER,
-    abi: uniswapRouterAbi,
-    functionName: 'swapExactTokensForTokens',
-    args: [amountIn, amountOutMin, path, recipient, deadline],
+    target: CONTRACT_ADDRESS,
+    abi: contractAbi,
+    functionName: 'myFunction',
+    args: [arg1, arg2],
   })
   .create();
 
@@ -32,178 +175,69 @@ const handle = await sdk.l1.bundle()
 const result = await handle.wait();
 ```
 
-## Key Concepts
+### Key Concepts
 
-### Shadow Accounts
+#### Shadow Accounts
 
-A **Shadow Account** is a smart contract wallet on L1 that is controlled by your L2 address:
+A **Shadow Account** is a smart contract wallet on L1 controlled by your L2 address:
 
-- **Deterministic**: Each L2 address maps to exactly one Shadow Account address on L1
+- **Deterministic**: Each L2 address maps to exactly one Shadow Account on L1
 - **Auto-deployed**: Created automatically on your first L1 operation
-- **Persistent**: Assets deposited to your Shadow Account remain there for future operations
-- **Secure**: Only your L2 address can control it
+- **Persistent**: Assets remain in your Shadow Account for future operations
 
 ```typescript
-// Get your Shadow Account address
 const shadowAccount = await sdk.l1.getShadowAccount(myL2Address);
 ```
 
-### Bundles
+#### Bundles
 
-A **Bundle** is a set of L1 operations that execute atomically:
+Multiple L1 operations execute atomically:
 
 ```typescript
-// Multiple operations in one atomic transaction
 const handle = await sdk.l1.bundle()
   .call({ target: TOKEN, abi: erc20Abi, functionName: 'approve', args: [POOL, amount] })
-  .call({ target: POOL, abi: poolAbi, functionName: 'deposit', args: [TOKEN, amount, recipient, 0] })
+  .call({ target: POOL, abi: poolAbi, functionName: 'deposit', args: [...] })
   .create();
 ```
 
-If any operation fails, the entire bundle reverts. This is critical for DeFi operations that require multiple steps (e.g., approve + swap).
+If any operation fails, the entire bundle reverts.
 
-### Two-Transaction Flow
+#### Two-Transaction Flow
 
 When you call `.create()`, the SDK executes two L2 transactions:
 
-1. **Withdrawal Transaction**: Sends ETH from L2 to your Shadow Account on L1 (for gas + any ETH value needed)
-2. **Bundle Submission**: Submits your operations to the L2 Interop Center contract
+1. **Withdrawal**: Sends ETH from L2 to your Shadow Account on L1
+2. **Bundle Submission**: Submits operations to the L2 Interop Center
 
-After L2 finalization (~15 minutes), an operator proves and executes your bundle on L1.
+After L2 finalization (~15 minutes), an operator executes your bundle on L1.
 
-```
-L2: Sign & Submit
-       │
-       ├─→ Tx 1: Withdraw ETH to Shadow Account
-       │
-       └─→ Tx 2: Submit bundle to L2InteropCenter
-              │
-              ▼
-         ~15 min wait (L2 finalization)
-              │
-              ▼
-L1: Operator executes bundle via Shadow Account
-```
+### Examples
 
-## API Reference
-
-### `sdk.l1.bundle()`
-
-Create a bundle of L1 operations:
-
-```typescript
-const builder = sdk.l1.bundle();
-
-// Chain multiple calls
-builder
-  .call({ target, abi, functionName, args, value? })
-  .call({ target, abi, functionName, args, value? });
-
-// Get a quote (estimated costs)
-const quote = await builder.quote();
-
-// Prepare (returns encoded operations)
-const prepared = await builder.prepare();
-
-// Create and submit
-const handle = await builder.create();
-```
-
-### `sdk.l1.call`
-
-For single operations:
-
-```typescript
-// Quote
-const quote = await sdk.l1.call.quote({ target, abi, functionName, args });
-
-// Prepare
-const prepared = await sdk.l1.call.prepare({ target, abi, functionName, args });
-
-// Create
-const handle = await sdk.l1.call.create({ target, abi, functionName, args });
-```
-
-### Quote Response
-
-```typescript
-interface L1Quote {
-  requiredFunds: bigint;    // Total funds needed on L1
-  currentBalance: bigint;   // Current Shadow Account balance
-  bridgeAmount: bigint;     // Amount to bridge from L2
-  estimatedGas: bigint;     // Estimated L1 gas
-  gasPrice: bigint;         // Current L1 gas price
-  totalCost: bigint;        // Total cost (gas + value)
-  shadowAccount: Address;   // Your Shadow Account address
-  needsDeployment: boolean; // Whether Shadow Account needs deployment
-}
-```
-
-### Handle & Waiting
-
-```typescript
-const handle = await sdk.l1.bundle().call(...).create();
-
-// handle.hash - L2 transaction hash
-// handle.bundleHash - Bundle identifier
-// handle.shadowAccount - Shadow Account address
-
-// Wait for L1 execution
-const result = await handle.wait({
-  timeout: 600_000,      // 10 min default
-  pollInterval: 15_000,  // 15 sec default
-});
-
-// result.status: 'success' | 'failed' | 'timeout'
-// result.l1TransactionHash - L1 execution tx hash
-// result.error - Error details if failed
-```
-
-### Helpers
-
-Common operations have helper methods:
-
-```typescript
-// ERC20 operations
-const approveCall = sdk.l1.helpers.erc20.approve(token, spender, amount);
-const transferCall = sdk.l1.helpers.erc20.transfer(token, to, amount);
-
-// Use in bundles
-await sdk.l1.bundle()
-  .call(approveCall)
-  .call(myCustomCall)
-  .create();
-```
-
-## Examples
-
-### Simple Token Approval
+#### Simple Contract Call
 
 ```typescript
 const handle = await sdk.l1.call.create({
-  target: USDC_ADDRESS,
-  abi: erc20Abi,
-  functionName: 'approve',
-  args: [SPENDER, parseUnits('1000', 6)],
+  target: CONTRACT_ADDRESS,
+  abi: contractAbi,
+  functionName: 'myFunction',
+  args: [arg1, arg2],
 });
 
 await handle.wait();
 ```
 
-### DeFi Deposit (Approve + Supply)
+#### DeFi Deposit (Approve + Supply)
 
 ```typescript
 const amount = parseUnits('1000', 6); // 1000 USDC
 
 const handle = await sdk.l1.bundle()
-  // Step 1: Approve
   .call({
     target: USDC,
     abi: erc20Abi,
     functionName: 'approve',
     args: [AAVE_POOL, amount],
   })
-  // Step 2: Supply
   .call({
     target: AAVE_POOL,
     abi: aavePoolAbi,
@@ -211,15 +245,11 @@ const handle = await sdk.l1.bundle()
     args: [USDC, amount, shadowAccount, 0],
   })
   .create();
-
-const result = await handle.wait();
-console.log('Deposited to Aave:', result.l1TransactionHash);
 ```
 
-### Sending ETH with a Call
+#### Sending ETH with a Call
 
 ```typescript
-// Payable functions: pass value to send ETH
 const handle = await sdk.l1.call.create({
   target: WETH_GATEWAY,
   abi: wethGatewayAbi,
@@ -229,54 +259,93 @@ const handle = await sdk.l1.call.create({
 });
 ```
 
-### Getting a Quote First
+### API Reference
 
 ```typescript
-const quote = await sdk.l1.bundle()
-  .call({ ... })
-  .call({ ... })
-  .quote();
+// Single call
+sdk.l1.call.quote({ target, abi, functionName, args, value? })
+sdk.l1.call.prepare({ target, abi, functionName, args, value? })
+sdk.l1.call.create({ target, abi, functionName, args, value? })
 
-console.log('Total cost:', formatEther(quote.totalCost), 'ETH');
-console.log('Need to bridge:', formatEther(quote.bridgeAmount), 'ETH');
-console.log('Shadow Account:', quote.shadowAccount);
+// Bundle builder
+sdk.l1.bundle()
+  .call({ target, abi, functionName, args, value? })
+  .call({ ... })
+  .quote()    // Get estimated costs
+  .prepare()  // Build without executing
+  .create()   // Execute
 
-// If user approves, execute
-const handle = await sdk.l1.bundle()
-  .call({ ... })
-  .call({ ... })
-  .create();
+// Quote response
+interface L1Quote {
+  requiredFunds: bigint;    // Total funds needed on L1
+  currentBalance: bigint;   // Current Shadow Account balance
+  bridgeAmount: bigint;     // Amount to bridge from L2
+  estimatedGas: bigint;     // Estimated L1 gas
+  gasPrice: bigint;         // Current L1 gas price
+  totalCost: bigint;        // Total cost
+  shadowAccount: Address;   // Your Shadow Account
+  needsDeployment: boolean; // Whether Shadow Account needs deployment
+}
+
+// Handle
+const handle = await sdk.l1.bundle().call(...).create();
+// handle.hash - L2 transaction hash
+// handle.bundleHash - Bundle identifier
+// handle.shadowAccount - Shadow Account address
+
+// Wait for completion
+const result = await handle.wait({ timeout: 600_000, pollInterval: 15_000 });
+// result.status: 'success' | 'failed' | 'timeout'
+// result.l1TransactionHash - L1 execution tx hash
+
+// Helpers
+sdk.l1.helpers.erc20.approve(token, spender, amount)
+sdk.l1.helpers.erc20.transfer(token, to, amount)
 ```
+
+---
+
+## Comparison: L2→L2 vs L1 Interop
+
+| Feature | L2→L2 Interop | L1 Interop |
+|---------|---------------|------------|
+| SDK Path | `sdk.interop` | `sdk.l1` |
+| Destination | Other ZKsync L2 chains | Ethereum L1 |
+| Execution Time | Near-instant | ~15 minutes |
+| Account Type | AliasedAccount | ShadowAccount |
+| Action Types | sendNative, sendErc20, call | Generic call (any contract) |
+| Bundling | Multiple actions in one tx | Multiple calls in one bundle |
+| Adapter | Ethers (primary) | Viem (primary) |
+
+---
 
 ## Protocol Integration Examples
 
-See the `examples/aave/` directory for complete Aave V3 integration examples:
+See `examples/aave/` for complete Aave V3 integration examples using L1 Interop:
 - `deposit.ts` - Supply collateral (ETH and ERC20)
 - `borrow.ts` - Borrow assets
 - `withdraw.ts` - Withdraw collateral
 - `repay.ts` - Repay borrowed assets
 
-## Important Notes
-
-1. **Finalization Time**: L1 execution occurs ~15 minutes after bundle submission (L2 finalization window)
-
-2. **Gas Estimation**: The SDK simulates operations on L1 to estimate gas, adding a 20% buffer for safety
-
-3. **Atomic Execution**: All operations in a bundle execute atomically. If one fails, they all revert
-
-4. **Shadow Account Funds**: Remaining funds stay in your Shadow Account for future operations
-
-5. **No Manual Bridging**: The SDK handles all fund bridging automatically based on the quote
+---
 
 ## Error Handling
 
-```typescript
-// Use try* variants for explicit error handling
-const result = await sdk.l1.call.tryCreate({ ... });
+Both interop types support `try*` variants for explicit error handling:
 
+```typescript
+// L2→L2
+const result = await sdk.interop.tryCreate({ dst, actions });
 if (result.ok) {
-  const handle = result.value;
-  await handle.wait();
+  await sdk.interop.wait(result.value, { for: 'executed' });
+} else {
+  console.error('Failed:', result.error);
+}
+
+// L1
+const result = await sdk.l1.call.tryCreate({ target, abi, functionName, args });
+if (result.ok) {
+  await result.value.wait();
 } else {
   console.error('Failed:', result.error);
 }

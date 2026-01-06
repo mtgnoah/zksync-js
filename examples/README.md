@@ -62,16 +62,28 @@ bun run examples/ethers/withdrawals/erc20-nonbase.ts
 
 ---
 
-### L1 Interop
+### Interop
 
-Execute arbitrary L1 transactions from L2 without manual bridging. See [interop/README.md](./interop/README.md) for detailed documentation.
+Execute cross-chain transactions without manual bridging. See [interop/README.md](./interop/README.md) for detailed documentation.
 
-| Directory       | Description                                    |
-| --------------- | ---------------------------------------------- |
-| `examples/interop/` | L1 Interop documentation and concepts      |
-| `examples/aave/`    | Aave V3 integration (deposit, borrow, etc) |
+| Directory           | Description                                      |
+| ------------------- | ------------------------------------------------ |
+| `examples/interop/` | L2→L2 and L1 Interop documentation               |
+| `examples/aave/`    | Aave V3 L1 integration (deposit, borrow, etc)    |
 
-**Quick example:**
+**L2→L2 Interop** - Send tokens and execute calls between ZKsync L2 chains:
+
+```typescript
+const handle = await sdk.interop.create({
+  dst: 324n, // Destination chain ID
+  actions: [
+    { type: 'sendErc20', token: USDC, to: recipient, amount: parseUnits('100', 6) },
+  ],
+});
+await sdk.interop.wait(handle, { for: 'executed' });
+```
+
+**L1 Interop** - Execute arbitrary L1 transactions from L2:
 
 ```typescript
 import { createViemSdk } from '@matterlabs/zksync-js/viem';
