@@ -1,6 +1,6 @@
 // src/adapters/ethers/resources/interop/context.ts
 import { Interface } from 'ethers';
-import type { InteropBaseTokens, InteropEthersContext } from './types';
+import type { InteropAddresses, InteropBaseTokens, InteropEthersContext } from './types';
 import type { Hex } from '../../../../core/types/primitives';
 import type { InteropTopics } from '../../../../core/resources/interop/events';
 import type { EthersClient } from '../../client';
@@ -26,19 +26,16 @@ export async function makeInteropContext(
   dstChain: bigint,
 ): Promise<InteropEthersContext> {
   const srcProvider = client.l2;
-  // Use chain registry for destination provider, fallback to L2 if not registered
-  const dstProvider = client.getProvider(dstChain) ?? client.l2;
+  const dstProvider = client.requireProvider(dstChain);
   const signer = client.signerFor();
 
   const [srcNet, dstNet] = await Promise.all([srcProvider.getNetwork(), dstProvider.getNetwork()]);
   const srcChainId = BigInt(srcNet.chainId.toString());
   const dstChainId = BigInt(dstNet.chainId.toString());
 
-  const addresses = await client.ensureAddresses();
-  const { interopCenter, interopHandler } = addresses;
-  if (!interopCenter || !interopHandler) {
-    throw new Error('Interop addresses not resolved');
-  }
+  const { interopCenter, interopHandler, bridgehub, l2AssetRouter } =
+    await client.ensureAddresses();
+  const addresses: InteropAddresses = { interopCenter, interopHandler, bridgehub, l2AssetRouter };
 
   const baseTokens: InteropBaseTokens = {
     src: await client.baseToken(srcChainId),

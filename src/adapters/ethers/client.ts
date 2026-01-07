@@ -36,8 +36,8 @@ export interface ResolvedAddresses {
   l2AssetRouter: Address;
   l2NativeTokenVault: Address;
   l2BaseTokenSystem: Address;
-  interopCenter?: Address;
-  interopHandler?: Address;
+  interopCenter: Address;
+  interopHandler: Address;
 }
 
 export interface EthersClient {
